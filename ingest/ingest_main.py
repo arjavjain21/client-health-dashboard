@@ -380,7 +380,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
             COALESCE(r.new_leads_reached_7d, 0) as new_leads_reached_7d,
             CASE
                 WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0 THEN
-                    ROUND(COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int, 4)
+                    ROUND(COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int, 4)
                 ELSE NULL
             END as volume_attainment,
             CASE
@@ -394,7 +394,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
             END as deliverability_flag,
             CASE
                 WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                    AND COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int < 0.8 THEN TRUE
+                    AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.8 THEN TRUE
                 ELSE FALSE
             END as volume_flag,
             CASE
@@ -414,11 +414,11 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
                     OR r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.04
                     OR r.positive_reply_rate_7d < 0.05
                     OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                        AND COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int < 0.5)
+                        AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.5)
                 THEN 'Red'
                 WHEN r.positive_reply_rate_7d < 0.08 AND r.reply_rate_7d >= 0.02
                     OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                        AND COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int < 0.8)
+                        AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.8)
                 THEN 'Yellow'
                 ELSE 'Green'
             END as rag_status,
@@ -446,7 +446,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
                     ELSE 'Deliverability risk: check reply and bounce rates'
                 END
             WHEN weekly_target_int IS NOT NULL AND weekly_target_int > 0
-                AND contacted_7d::numeric / weekly_target_int < 0.5 THEN
+                AND new_leads_reached_7d::numeric / weekly_target_int < 0.5 THEN
                 'Volume critically low: attainment is ' || ROUND(volume_attainment::numeric, 2) || '%'
             WHEN mmf_flag THEN
                 'MMF risk: positive reply rate is ' || ROUND((positive_reply_rate_7d * 100)::numeric, 2) || '%'

@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import type { ClientRow, FilterOptions } from '@/lib/types';
+import { debounce } from '@/lib/debounce';
 
 // ============================================================================
 // DESIGN TOKENS
@@ -848,10 +849,20 @@ export default function DashboardClient() {
   const [hoveredClient, setHoveredClient] = useState<ClientRow | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  // Local search input state for immediate feedback
+  const [searchInputValue, setSearchInputValue] = useState<string>('');
 
   // ==========================================================================
   // URL STATE MANAGEMENT
   // ==========================================================================
+
+  // Debounced search callback - updates filter after 300ms of no typing
+  const debouncedUpdateSearch = useMemo(
+    () => debounce((value: string) => {
+      setFilters(prev => ({ ...prev, client_code_search: value || undefined }));
+    }, 300),
+    []
+  );
 
   // Initialize state from URL on mount
   useEffect(() => {
@@ -891,7 +902,10 @@ export default function DashboardClient() {
     if (dataMissing !== null) urlFilters.data_missing_flag = dataMissing === 'true';
 
     const clientSearch = searchParams.get('client_code_search');
-    if (clientSearch) urlFilters.client_code_search = clientSearch;
+    if (clientSearch) {
+      urlFilters.client_code_search = clientSearch;
+      setSearchInputValue(clientSearch);
+    }
 
     const pcplRange = searchParams.get('pcpl_range');
     if (pcplRange) urlFilters.pcpl_range = pcplRange;
@@ -1348,8 +1362,12 @@ export default function DashboardClient() {
                         'placeholder:text-slate-400'
                       )}
                       style={{ transition: tokens.transition }}
-                      value={filters.client_code_search || ''}
-                      onChange={(e) => setFilters({ ...filters, client_code_search: e.target.value || undefined })}
+                      value={searchInputValue}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSearchInputValue(value);
+                        debouncedUpdateSearch(value);
+                      }}
                       aria-label="Search by client code"
                     />
                   </div>
@@ -1619,12 +1637,10 @@ export default function DashboardClient() {
                     <tr
                       key={client.client_id}
                       className={clsx(
-                        'group transition-colors cursor-pointer',
-                        index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50',
-                        'hover:bg-slate-50 focus-within:bg-slate-50'
+                        'group transition-colors',
+                        index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                       )}
                       style={{ transition: tokens.transition }}
-                      onClick={() => window.location.href = `/client/${client.client_code}`}
                       onMouseEnter={() => setHoveredClient(client)}
                       onMouseLeave={() => setHoveredClient(null)}
                     >
@@ -1645,7 +1661,10 @@ export default function DashboardClient() {
                           aria-label={`Select ${client.client_code}`}
                         />
                       </td>
-                      <td className="px-4 py-4">
+                      <td
+                        className="px-4 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => window.location.href = `/client/${client.client_code}`}
+                      >
                         <div>
                           <div className="font-semibold text-slate-900 text-sm group-hover:text-blue-700 transition-colors focus:outline-none focus:underline">
                             {client.client_code}

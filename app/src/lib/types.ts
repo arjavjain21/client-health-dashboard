@@ -58,11 +58,15 @@ export interface CampaignRow {
   start_date: string;
   end_date: string;
   total_sent: number;
+  new_leads_reached_7d: number; // Unique leads contacted
   replies_count: number;
   positive_reply: number;
   bounce_count: number;
   reply_rate: number;
   positive_reply_rate: number;
+  bounce_pct_7d: number | null;
+  weekly_target_int: number | null;
+  volume_attainment: number | null;
 }
 
 export interface UnmatchedMapping {

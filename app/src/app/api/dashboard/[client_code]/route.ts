@@ -74,20 +74,36 @@ export async function GET(
 
     const trendData = await query<TrendDataPoint>(trendQuery, [client_code]);
 
-    // Fetch 7-day campaign breakdown
+    // Fetch 7-day campaign breakdown with enhanced metrics - AGGREGATED BY CAMPAIGN
     const campaignQuery = `
       SELECT
         campaign_id,
         campaign_name,
         status,
-        start_date,
-        end_date,
-        total_sent,
-        replies_count,
-        positive_reply,
-        bounce_count,
-        reply_rate,
-        positive_reply_rate
+        MIN(start_date) as start_date,
+        MAX(end_date) as end_date,
+        SUM(total_sent)::bigint as total_sent,
+        SUM(COALESCE(new_leads_reached, 0))::bigint as new_leads_reached_7d,
+        SUM(replies_count)::bigint as replies_count,
+        SUM(positive_reply)::bigint as positive_reply,
+        SUM(bounce_count)::bigint as bounce_count,
+        CASE
+          WHEN SUM(COALESCE(new_leads_reached, 0)) > 0 THEN
+            ROUND((SUM(replies_count)::numeric / SUM(COALESCE(new_leads_reached, 0))), 4)
+          ELSE NULL
+        END as reply_rate,
+        CASE
+          WHEN SUM(replies_count) > 0 THEN
+            ROUND((SUM(positive_reply)::numeric / SUM(replies_count)), 4)
+          ELSE NULL
+        END as positive_reply_rate,
+        CASE
+          WHEN SUM(total_sent) > 0 THEN
+            ROUND((SUM(bounce_count)::numeric / SUM(total_sent)), 4)
+          ELSE NULL
+        END as bounce_pct_7d,
+        NULL::int as weekly_target_int,
+        NULL::numeric as volume_attainment
       FROM campaign_reporting_local
       WHERE client_name_norm IN (
         SELECT DISTINCT client_name_norm
@@ -95,7 +111,8 @@ export async function GET(
         WHERE client_code = $1
       )
       AND end_date >= CURRENT_DATE - INTERVAL '7 days'
-      ORDER BY end_date DESC, total_sent DESC
+      GROUP BY campaign_id, campaign_name, status
+      ORDER BY new_leads_reached_7d DESC, total_sent DESC
     `;
 
     const campaigns = await query<CampaignRow>(campaignQuery, [client_code]);
