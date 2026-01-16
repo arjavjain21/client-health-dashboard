@@ -18,7 +18,8 @@ Something is broken or critically behind. Drop everything and look at these clie
 
 **Common triggers:**
 - **Reply rate below 2%** - Emails aren't getting responses
-- **Bounce rate 5% or higher** - Emails aren't reaching inboxes
+- **Bounce rate 4% or higher** - Emails aren't reaching inboxes
+- **Positive rate below 5%** - Getting replies, but very poor quality
 - **No contact in 7 days** - Zero emails sent recently
 - **Volume below 50% of target** - Way behind on weekly goals
 
@@ -33,7 +34,7 @@ Something is broken or critically behind. Drop everything and look at these clie
 Not critical yet, but trending in the wrong direction.
 
 **Common triggers:**
-- **Positive reply rate below 0.2%** - Getting replies, but not quality leads
+- **Positive reply rate between 5-8%** - Getting replies, but not quality leads
 - **Volume between 50-80% of target** - Behind, but not critically
 
 **What to do:**
@@ -47,7 +48,8 @@ Everything is working as expected.
 
 **What this means:**
 - Reply rates are healthy (2% or higher)
-- Bounce rates are low (below 3%)
+- Positive rates are good (8% or higher)
+- Bounce rates are low (below 2%)
 - Volume is on track (80%+ of target)
 
 **What to do:**
@@ -96,17 +98,24 @@ We pull data from two places:
 
 **Example**: 27 positive replies from 182 total replies = 14.8%
 
+**Target**: 8% or higher
+
+**Color coding**:
+- 🟢 Green: 8% or higher
+- 🟡 Amber: 5-8%
+- 🔴 Red: Below 5%
+
 **Why it matters**: Tells us about lead quality - are we reaching the right people?
 
 #### 7. Bounce Rate
 **Formula**: Bounced Emails ÷ Emails Sent
 
-**Target**: Below 3%
+**Target**: Below 2%
 
 **Color coding**:
-- 🟢 Green: Below 3%
-- 🟡 Amber: 3-5%
-- 🔴 Red: 5% or higher
+- 🟢 Green: Below 2%
+- 🟡 Amber: 2-4%
+- 🔴 Red: 4% or higher
 
 **Why it matters**: High bounces mean emails aren't reaching inboxes - bad lists or wrong addresses
 
@@ -240,8 +249,8 @@ A: Not yet. v1 focuses on campaign performance. Bookings and qualification metri
 | Metric | Good | Warning | Critical |
 |--------|------|---------|----------|
 | Reply Rate | ≥2% | 1.5-2% | <1.5% |
-| Bounce Rate | <3% | 3-5% | ≥5% |
-| Positive Rate | >5% | 0.2-5% | <0.2% |
+| Bounce Rate | <2% | 2-4% | ≥4% |
+| Positive Rate | ≥8% | 5-8% | <5% |
 | Volume vs Target | ≥80% | 50-80% | <50% |
 
 **Remember**: RAG is your friend. 🔴 Act now. 🟡 Watch closely. 🟢 Keep going.

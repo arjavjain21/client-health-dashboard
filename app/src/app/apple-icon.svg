@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <!-- Background -->
+  <rect width="180" height="180" fill="#0f172a" rx="40"/>
+
+  <!-- Chart bars -->
+  <rect x="45" y="90" width="15" height="50" fill="#10b981" rx="2"/>
+  <rect x="67" y="70" width="15" height="70" fill="#3b82f6" rx="2"/>
+  <rect x="89" y="80" width="15" height="60" fill="#f59e0b" rx="2"/>
+  <rect x="111" y="60" width="15" height="80" fill="#10b981" rx="2"/>
+
+  <!-- Heartbeat line -->
+  <path d="M 35 130 L 55 130 L 67 100 L 89 160 L 100 130 L 145 130" stroke="#ef4444" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

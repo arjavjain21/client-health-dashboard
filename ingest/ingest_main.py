@@ -398,7 +398,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
                 ELSE FALSE
             END as volume_flag,
             CASE
-                WHEN r.reply_rate_7d >= 0.02 AND r.positive_reply_rate_7d < 0.002 THEN TRUE
+                WHEN r.reply_rate_7d >= 0.02 AND r.positive_reply_rate_7d < 0.05 THEN TRUE
                 ELSE FALSE
             END as mmf_flag,
             CASE
@@ -411,11 +411,12 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
             END as data_stale_flag,
             CASE
                 WHEN (r.contacted_7d IS NULL OR r.contacted_7d = 0)
-                    OR r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.05
+                    OR r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.04
+                    OR r.positive_reply_rate_7d < 0.05
                     OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
                         AND COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int < 0.5)
                 THEN 'Red'
-                WHEN r.positive_reply_rate_7d < 0.002 AND r.reply_rate_7d >= 0.02
+                WHEN r.positive_reply_rate_7d < 0.08 AND r.reply_rate_7d >= 0.02
                     OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
                         AND COALESCE(r.contacted_7d, 0)::numeric / c.weekly_target_int < 0.8)
                 THEN 'Yellow'
@@ -440,7 +441,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
                 CASE
                     WHEN reply_rate_7d < 0.02 THEN
                         'Deliverability risk: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%'
-                    WHEN bounce_pct_7d >= 0.05 THEN
+                    WHEN bounce_pct_7d >= 0.04 THEN
                         'Deliverability risk: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '%'
                     ELSE 'Deliverability risk: check reply and bounce rates'
                 END
