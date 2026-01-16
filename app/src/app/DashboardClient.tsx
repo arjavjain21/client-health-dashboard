@@ -207,6 +207,22 @@ function DownloadIcon({ className }: { className?: string }) {
   );
 }
 
+function RefreshIcon({ className, spinning }: { className?: string; spinning?: boolean }) {
+  return (
+    <svg
+      className={className || "w-4 h-4"}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      aria-hidden="true"
+      style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  );
+}
+
 function FilterIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -830,6 +846,8 @@ export default function DashboardClient() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedClients, setSelectedClients] = useState<Set<number>>(new Set());
   const [hoveredClient, setHoveredClient] = useState<ClientRow | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   // ==========================================================================
   // URL STATE MANAGEMENT
@@ -916,6 +934,40 @@ export default function DashboardClient() {
 
     router.push(newPath, { scroll: false });
   }, [filters, sortField, sortOrder, router]);
+
+  // ==========================================================================
+  // DATA REFRESH HANDLER
+  // ==========================================================================
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshMessage(null);
+
+    try {
+      const response = await fetch('/api/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setRefreshMessage('✓ Data refresh started! This will take 30-60 seconds. Refresh the page in a minute.');
+
+        // Clear message after 10 seconds
+        setTimeout(() => setRefreshMessage(null), 10000);
+      } else {
+        setRefreshMessage('✗ Failed to start refresh. Please try again or contact tech team.');
+        setTimeout(() => setRefreshMessage(null), 5000);
+      }
+    } catch (error) {
+      console.error('Refresh error:', error);
+      setRefreshMessage('✗ Failed to start refresh. Please try again.');
+      setTimeout(() => setRefreshMessage(null), 5000);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     fetch('/api/dashboard/filters')
@@ -1132,11 +1184,33 @@ export default function DashboardClient() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {refreshMessage && (
+                <div className="text-xs font-medium px-3 py-1.5 rounded-md border bg-slate-50">
+                  <span className={refreshMessage.startsWith('✓') ? 'text-emerald-700' : 'text-red-700'}>
+                    {refreshMessage}
+                  </span>
+                </div>
+              )}
               {selectedClients.size > 0 && (
                 <span className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 rounded-md border border-slate-200">
                   {selectedClients.size} selected
                 </span>
               )}
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className={clsx(
+                  'inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold',
+                  'bg-white hover:bg-slate-50 rounded-md border border-slate-300',
+                  'transition-all focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2',
+                  refreshing && 'opacity-50 cursor-not-allowed'
+                )}
+                style={{ transition: tokens.transition }}
+                aria-label="Refresh data"
+              >
+                <RefreshIcon spinning={refreshing} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
               <button
                 onClick={exportToCSV}
                 className={clsx(
