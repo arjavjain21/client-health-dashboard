@@ -131,8 +131,8 @@ We pull data from two places:
 ## When Does Data Update?
 
 ### Automatic Updates
-- **Data refreshes daily around 11:00 AM IST**
-- This happens after our source systems update (10:30 AM IST)
+- **Data refreshes daily around 8:30 AM IST**
+- This happens after our source systems update (7:30 AM IST)
 
 ### What You'll See
 - Top of dashboard shows the date range (e.g., "Jan 10 - Jan 15")

@@ -423,7 +423,7 @@ ORDER BY
 ### Ingestion Frequency
 
 - **Manual**: Run `python ingest/ingest_main.py`
-- **Scheduled**: Set up cron job (recommended: daily at 11:00 AM IST, after Supabase updates at 10:30 AM IST)
+- **Scheduled**: Set up cron job (recommended: daily at 8:30 AM IST, after Supabase updates at 7:30 AM IST)
 
 ### Data staleness Detection
 

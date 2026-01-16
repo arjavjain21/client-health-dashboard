@@ -134,7 +134,7 @@ This dashboard implements a complete data pipeline and visualization system for 
 
 2. **7-Day Window**: Uses `end_date` from campaign_reporting
    - Excludes today (last 7 COMPLETED days)
-   - Updated daily around 10:30 AM IST
+   - Updated daily around 7:30 AM IST
 
 3. **Weekly Target Parsing**: Extracts first integer
    - Handles "50000", "50,000 emails", etc.

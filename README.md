@@ -115,11 +115,11 @@ python ingest/ingest_main.py
 
 **Scheduled ingestion (cron)**:
 ```bash
-# Run daily at 11:00 AM IST (after Supabase updates at 10:30 AM)
+# Run daily at 8:30 AM IST (after Supabase updates at 7:30 AM)
 crontab -e
 
 # Add this line:
-0 11 * * * cd /home/ubuntu/client-health-dashboard && source venv/bin/activate && python ingest/ingest_main.py >> /home/ubuntu/client-health-dashboard/logs/ingest.log 2>&1
+30 8 * * * cd /home/ubuntu/client-health-dashboard && source venv/bin/activate && python ingest/ingest_main.py >> /home/ubuntu/client-health-dashboard/logs/ingest.log 2>&1
 ```
 
 ## Architecture
@@ -141,7 +141,7 @@ Supabase (READ-ONLY) → Ingestion (Python) → Local PostgreSQL → Next.js Das
 
 2. **Exact Client Matching**: Maps `client_code` to `client_name` using exact normalized match (lowercase, trimmed). No fuzzy matching in v1 to prevent false positives.
 
-3. **7-Day Window**: Uses last 7 COMPLETED days (excludes today). Campaign reporting updates daily around 10:30 AM IST.
+3. **7-Day Window**: Uses last 7 COMPLETED days (excludes today). Campaign reporting updates daily around 7:30 AM IST.
 
 4. **RAG System**: Deterministic rules for Red/Yellow/Green status based on deliverability, volume, and data completeness.
 
@@ -208,7 +208,7 @@ Supabase (READ-ONLY) → Ingestion (Python) → Local PostgreSQL → Next.js Das
 ## 7-Day Window Explanation
 
 - **What**: Last 7 COMPLETED days, excluding today
-- **Why**: Campaign reporting updates daily around 10:30 AM IST with previous day's data
+- **Why**: Campaign reporting updates daily around 7:30 AM IST with previous day's data
 - **How**: Uses `end_date >= CURRENT_DATE - INTERVAL '7 days'`
 - **Example**: If today is Wednesday Jan 15, window is Jan 8-14 (Tuesday to Monday)
 
