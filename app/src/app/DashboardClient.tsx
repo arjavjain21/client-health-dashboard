@@ -258,20 +258,20 @@ function getDateRangeInfo(): { start: string; end: string; display: string } {
 
   // Start date: Always go back to previous Friday
   // Calculate days to go back:
-  // Sunday (0): go back 3 days (Sun->Sat->Fri) = 3 days
-  // Monday (1): go back 4 days (Mon->Sun->Sat->Fri) = 4 days
-  // Tuesday (2): go back 5 days = 5 days
-  // Wednesday (3): go back 6 days = 6 days
-  // Thursday (4): go back 7 days = 7 days
+  // Sunday (0): go back 2 days (Sun->Sat->Fri) = 2 days
+  // Monday (1): go back 3 days (Mon->Sun->Sat->Fri) = 3 days
+  // Tuesday (2): go back 4 days (Tue->Mon->Sun->Sat->Fri) = 4 days
+  // Wednesday (3): go back 5 days = 5 days
+  // Thursday (4): go back 6 days = 6 days
   // Friday (5): go back 7 days to previous Friday = 7 days
   // Saturday (6): go back 1 day (Sat->Fri) = 1 day
   let daysToSubtract: number;
   if (currentDay === 0) {  // Sunday
-    daysToSubtract = 3;
+    daysToSubtract = 2;
   } else if (currentDay === 6) {  // Saturday
     daysToSubtract = 1;
   } else {  // Monday through Friday
-    daysToSubtract = currentDay + 3;
+    daysToSubtract = currentDay + 2;
   }
 
   const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysToSubtract));
