@@ -11,7 +11,6 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import type { ClientRow, FilterOptions } from '@/lib/types';
-import { debounce } from '@/lib/debounce';
 
 // ============================================================================
 // DESIGN TOKENS
@@ -843,8 +842,8 @@ export default function DashboardClient() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [loading, setLoading] = useState(true);
   const [staleData, setStaleData] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('rag_status');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [sortField, setSortField] = useState<SortField>('new_leads_reached_7d');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedClients, setSelectedClients] = useState<Set<number>>(new Set());
   const [hoveredClient, setHoveredClient] = useState<ClientRow | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -856,13 +855,10 @@ export default function DashboardClient() {
   // URL STATE MANAGEMENT
   // ==========================================================================
 
-  // Debounced search callback - updates filter after 300ms of no typing
-  const debouncedUpdateSearch = useMemo(
-    () => debounce((value: string) => {
-      setFilters(prev => ({ ...prev, client_code_search: value || undefined }));
-    }, 300),
-    []
-  );
+  // Handle search submission - updates filter only on Enter or blur
+  const handleSearchSubmit = useCallback((value: string) => {
+    setFilters(prev => ({ ...prev, client_code_search: value.trim() || undefined }));
+  }, []);
 
   // Initialize state from URL on mount
   useEffect(() => {
@@ -1364,9 +1360,21 @@ export default function DashboardClient() {
                       style={{ transition: tokens.transition }}
                       value={searchInputValue}
                       onChange={(e) => {
-                        const value = e.target.value;
-                        setSearchInputValue(value);
-                        debouncedUpdateSearch(value);
+                        // Only update local state for immediate UI feedback
+                        setSearchInputValue(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        // Trigger search on Enter key
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSearchSubmit(searchInputValue);
+                          // Blur the input to remove focus
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      onBlur={() => {
+                        // Trigger search when user clicks outside (blur)
+                        handleSearchSubmit(searchInputValue);
                       }}
                       aria-label="Search by client code"
                     />
