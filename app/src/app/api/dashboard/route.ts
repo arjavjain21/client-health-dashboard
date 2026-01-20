@@ -118,14 +118,7 @@ export async function GET(request: NextRequest) {
         most_recent_reporting_end_date, computed_at
       FROM client_health_dashboard_v1_local
       ${where}
-      ORDER BY
-        CASE rag_status
-          WHEN 'Red' THEN 1
-          WHEN 'Yellow' THEN 2
-          WHEN 'Green' THEN 3
-        END,
-        positives_7d ASC,
-        contacted_7d ASC
+      ORDER BY new_leads_reached_7d DESC NULLS LAST
     `;
 
     const rows = await query<ClientRow>(queryText, params);

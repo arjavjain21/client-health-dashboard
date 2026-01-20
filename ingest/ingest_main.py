@@ -169,6 +169,63 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
 
     rowcount = local_db.execute_write_many(upsert_query, processed_rows)
     logger.info(f"Upserted {rowcount} clients into local database")
+    
+    # Fix missing SDR names by looking up from SDR IDs
+    logger.info("Fixing missing SDR names from SDR IDs...")
+    fix_sdr_names_query = """
+        UPDATE clients_local c1
+        SET assigned_sdr_name = (
+            SELECT c2.assigned_sdr_name
+            FROM clients_local c2
+            WHERE c2.assigned_sdr_id = c1.assigned_sdr_id
+              AND c2.assigned_sdr_name IS NOT NULL
+              AND c2.assigned_sdr_name != ''
+            LIMIT 1
+        )
+        WHERE c1.assigned_sdr_id IS NOT NULL
+          AND (c1.assigned_sdr_name IS NULL OR c1.assigned_sdr_name = '')
+    """
+    fixed_count = local_db.execute_write(fix_sdr_names_query)
+    if fixed_count > 0:
+        logger.info(f"Fixed {fixed_count} missing SDR names")
+    
+    # Fix missing Account Manager names by looking up from AM IDs
+    logger.info("Fixing missing Account Manager names from AM IDs...")
+    fix_am_names_query = """
+        UPDATE clients_local c1
+        SET assigned_account_manager_name = (
+            SELECT c2.assigned_account_manager_name
+            FROM clients_local c2
+            WHERE c2.assigned_account_manager_id = c1.assigned_account_manager_id
+              AND c2.assigned_account_manager_name IS NOT NULL
+              AND c2.assigned_account_manager_name != ''
+            LIMIT 1
+        )
+        WHERE c1.assigned_account_manager_id IS NOT NULL
+          AND (c1.assigned_account_manager_name IS NULL OR c1.assigned_account_manager_name = '')
+    """
+    fixed_am_count = local_db.execute_write(fix_am_names_query)
+    if fixed_am_count > 0:
+        logger.info(f"Fixed {fixed_am_count} missing Account Manager names")
+    
+    # Fix missing Inbox Manager names by looking up from IM IDs
+    logger.info("Fixing missing Inbox Manager names from IM IDs...")
+    fix_im_names_query = """
+        UPDATE clients_local c1
+        SET assigned_inbox_manager_name = (
+            SELECT c2.assigned_inbox_manager_name
+            FROM clients_local c2
+            WHERE c2.assigned_inbox_manager_id = c1.assigned_inbox_manager_id
+              AND c2.assigned_inbox_manager_name IS NOT NULL
+              AND c2.assigned_inbox_manager_name != ''
+            LIMIT 1
+        )
+        WHERE c1.assigned_inbox_manager_id IS NOT NULL
+          AND (c1.assigned_inbox_manager_name IS NULL OR c1.assigned_inbox_manager_name = '')
+    """
+    fixed_im_count = local_db.execute_write(fix_im_names_query)
+    if fixed_im_count > 0:
+        logger.info(f"Fixed {fixed_im_count} missing Inbox Manager names")
 
 
 def ingest_campaign_reporting(
