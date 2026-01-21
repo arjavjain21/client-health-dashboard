@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS client_health_dashboard_v1_local (
     reply_rate_7d NUMERIC(10, 4),
     positive_reply_rate_7d NUMERIC(10, 4),
     bounce_pct_7d NUMERIC(10, 4),
+    new_leads_reached_7d INTEGER DEFAULT 0,
+    prorated_target NUMERIC(10, 2),
 
     -- Computed metrics
     volume_attainment NUMERIC(10, 4),

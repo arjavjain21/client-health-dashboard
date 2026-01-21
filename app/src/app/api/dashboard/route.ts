@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
         contacted_7d, replies_7d, positives_7d, bounces_7d,
         reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
         new_leads_reached_7d,
+        prorated_target,
         volume_attainment, pcpl_proxy_7d,
         deliverability_flag, volume_flag, mmf_flag,
         data_missing_flag, data_stale_flag,

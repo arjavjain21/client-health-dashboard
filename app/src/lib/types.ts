@@ -22,6 +22,7 @@ export interface ClientRow {
   positive_reply_rate_7d: number | null;
   bounce_pct_7d: number | null;
   new_leads_reached_7d: number;
+  prorated_target: number | null;
   volume_attainment: number | null;
   pcpl_proxy_7d: number | null;
   deliverability_flag: boolean;
@@ -89,6 +90,11 @@ export interface DashboardFilters {
   volume_flag?: boolean;
   data_missing_flag?: boolean;
   client_code_search?: string;
+  pcpl_range?: string;
+  reply_rate_range?: string;
+  bounce_rate_range?: string;
+  positive_reply_rate_range?: string;
+  target_status?: 'below' | 'above';
 }
 
 export interface FilterOptions {

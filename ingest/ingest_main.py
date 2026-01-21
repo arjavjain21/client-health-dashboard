@@ -350,7 +350,11 @@ def compute_7d_rollups(local_db: LocalDatabase):
     logger.info("Computing Friday-to-Yesterday rollups...")
 
     start_date, end_date = get_friday_to_yesterday_range()
-    logger.info(f"Date range: {start_date} to {end_date}")
+    # Calculate days in period for pro-rated target calculations
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+    days_in_period = (end_dt - start_dt).days + 1
+    logger.info(f"Date range: {start_date} to {end_date} ({days_in_period} days)")
 
     # Clear old rollups
     local_db.execute_write("DELETE FROM client_7d_rollup_v1_local")
@@ -399,17 +403,109 @@ def compute_7d_rollups(local_db: LocalDatabase):
 
     rowcount = local_db.execute_write(rollup_query, (start_date, end_date))
     logger.info(f"Computed {rowcount} client rollups for date range {start_date} to {end_date}")
+    
+    # Return days_in_period for pro-rated target calculations
+    return days_in_period
 
 
-def compute_dashboard_dataset(local_db: LocalDatabase):
+def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
     """Build final dashboard dataset with all metrics, flags, and RAG status"""
     logger.info("Computing dashboard dataset...")
 
     # Clear old dashboard data
     local_db.execute_write("DELETE FROM client_health_dashboard_v1_local")
 
-    # Compute dashboard dataset
+    # Compute dashboard dataset with hybrid RAG voting system
     dashboard_query = """
+        WITH metric_rags AS (
+            SELECT
+                c.*,
+                COALESCE(r.contacted_7d, 0) as contacted_7d,
+                COALESCE(r.replies_7d, 0) as replies_7d,
+                COALESCE(r.positives_7d, 0) as positives_7d,
+                COALESCE(r.bounces_7d, 0) as bounces_7d,
+                r.reply_rate_7d, r.positive_reply_rate_7d, r.bounce_pct_7d,
+                COALESCE(r.new_leads_reached_7d, 0) as new_leads_reached_7d,
+                -- Calculate pro-rated target based on days in reporting period
+                CASE
+                    WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0 THEN
+                        ROUND(c.weekly_target_int::numeric * %s / 7.0, 2)
+                    ELSE NULL
+                END as prorated_target,
+                -- Volume attainment using pro-rated target
+                CASE
+                    WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0 THEN
+                        ROUND(COALESCE(r.new_leads_reached_7d, 0)::numeric / (c.weekly_target_int::numeric * %s / 7.0), 4)
+                    ELSE NULL
+                END as volume_attainment,
+                CASE
+                    WHEN r.positives_7d > 0 THEN
+                        ROUND(COALESCE(r.contacted_7d, 0)::numeric / r.positives_7d, 2)
+                    ELSE NULL
+                END as pcpl_proxy_7d,
+                CASE
+                    WHEN r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.05 THEN TRUE
+                    ELSE FALSE
+                END as deliverability_flag,
+                CASE
+                    WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
+                        AND COALESCE(r.new_leads_reached_7d, 0)::numeric / (c.weekly_target_int::numeric * %s / 7.0) < 0.8 THEN TRUE
+                    ELSE FALSE
+                END as volume_flag,
+                CASE
+                    WHEN r.reply_rate_7d >= 0.02 AND r.positive_reply_rate_7d < 0.05 THEN TRUE
+                    ELSE FALSE
+                END as mmf_flag,
+                CASE
+                    WHEN r.contacted_7d IS NULL OR r.contacted_7d = 0 THEN TRUE
+                    ELSE FALSE
+                END as data_missing_flag,
+                CASE
+                    WHEN r.most_recent_reporting_end_date < CURRENT_DATE - 1 THEN TRUE
+                    ELSE FALSE
+                END as data_stale_flag,
+                r.most_recent_reporting_end_date,
+                -- Individual RAG calculations for each metric
+                -- Reply Rate RAG
+                CASE
+                    WHEN r.reply_rate_7d IS NULL THEN NULL
+                    WHEN r.reply_rate_7d < 0.015 THEN 'Red'
+                    WHEN r.reply_rate_7d < 0.02 THEN 'Amber'
+                    ELSE 'Green'
+                END as rr_rag,
+                -- Positive Reply Rate RAG (calculated as positives/replies)
+                CASE
+                    WHEN r.replies_7d IS NULL OR r.replies_7d = 0 THEN NULL
+                    WHEN r.positives_7d IS NULL OR r.positives_7d = 0 THEN
+                        CASE WHEN r.reply_rate_7d >= 0.02 THEN 'Red' ELSE NULL END
+                    WHEN (r.positives_7d::numeric / r.replies_7d) < 0.05 THEN 'Red'
+                    WHEN (r.positives_7d::numeric / r.replies_7d) < 0.08 THEN 'Amber'
+                    ELSE 'Green'
+                END as prr_rag,
+                -- PCPL RAG
+                CASE
+                    WHEN r.positives_7d IS NULL OR r.positives_7d = 0 THEN NULL
+                    WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / r.positives_7d > 800 THEN 'Red'
+                    WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / r.positives_7d > 500 THEN 'Amber'
+                    ELSE 'Green'
+                END as pcpl_rag,
+                -- Bounce Rate RAG
+                CASE
+                    WHEN r.bounce_pct_7d IS NULL THEN NULL
+                    WHEN r.bounce_pct_7d >= 0.04 THEN 'Red'
+                    WHEN r.bounce_pct_7d >= 0.02 THEN 'Amber'
+                    ELSE 'Green'
+                END as br_rag,
+                -- Volume/Target RAG (using pro-rated target)
+                CASE
+                    WHEN c.weekly_target_int IS NULL OR c.weekly_target_int = 0 THEN NULL
+                    WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / (c.weekly_target_int::numeric * %s / 7.0) < 0.5 THEN 'Red'
+                    WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / (c.weekly_target_int::numeric * %s / 7.0) < 0.8 THEN 'Amber'
+                    ELSE 'Green'
+                END as volume_rag
+            FROM active_clients_v1 c
+            LEFT JOIN client_7d_rollup_v1_local r USING (client_id)
+        )
         INSERT INTO client_health_dashboard_v1_local (
             client_id, client_code, client_name, client_company_name,
             relationship_status, assigned_account_manager_name,
@@ -418,6 +514,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
             contacted_7d, replies_7d, positives_7d, bounces_7d,
             reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
             new_leads_reached_7d,
+            prorated_target,
             volume_attainment, pcpl_proxy_7d,
             deliverability_flag, volume_flag, mmf_flag,
             data_missing_flag, data_stale_flag,
@@ -425,90 +522,149 @@ def compute_dashboard_dataset(local_db: LocalDatabase):
             most_recent_reporting_end_date
         )
         SELECT
-            c.client_id, c.client_code, c.client_name, c.client_company_name,
-            c.relationship_status, c.assigned_account_manager_name,
-            c.assigned_inbox_manager_name, c.assigned_sdr_name,
-            c.weekly_target_int, c.weekly_target_missing, c.closelix,
-            COALESCE(r.contacted_7d, 0) as contacted_7d,
-            COALESCE(r.replies_7d, 0) as replies_7d,
-            COALESCE(r.positives_7d, 0) as positives_7d,
-            COALESCE(r.bounces_7d, 0) as bounces_7d,
-            r.reply_rate_7d, r.positive_reply_rate_7d, r.bounce_pct_7d,
-            COALESCE(r.new_leads_reached_7d, 0) as new_leads_reached_7d,
+            m.client_id, m.client_code, m.client_name, m.client_company_name,
+            m.relationship_status, m.assigned_account_manager_name,
+            m.assigned_inbox_manager_name, m.assigned_sdr_name,
+            m.weekly_target_int, m.weekly_target_missing, m.closelix,
+            m.contacted_7d, m.replies_7d, m.positives_7d, m.bounces_7d,
+            m.reply_rate_7d, m.positive_reply_rate_7d, m.bounce_pct_7d,
+            m.new_leads_reached_7d,
+            m.prorated_target,
+            m.volume_attainment, m.pcpl_proxy_7d,
+            m.deliverability_flag, m.volume_flag, m.mmf_flag,
+            m.data_missing_flag, m.data_stale_flag,
+            -- Hybrid RAG Status: Individual metric RAGs + Majority Voting with Critical Overrides
             CASE
-                WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0 THEN
-                    ROUND(COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int, 4)
-                ELSE NULL
-            END as volume_attainment,
-            CASE
-                WHEN r.positives_7d > 0 THEN
-                    ROUND(COALESCE(r.contacted_7d, 0)::numeric / r.positives_7d, 2)
-                ELSE NULL
-            END as pcpl_proxy_7d,
-            CASE
-                WHEN r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.05 THEN TRUE
-                ELSE FALSE
-            END as deliverability_flag,
-            CASE
-                WHEN c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                    AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.8 THEN TRUE
-                ELSE FALSE
-            END as volume_flag,
-            CASE
-                WHEN r.reply_rate_7d >= 0.02 AND r.positive_reply_rate_7d < 0.05 THEN TRUE
-                ELSE FALSE
-            END as mmf_flag,
-            CASE
-                WHEN r.contacted_7d IS NULL OR r.contacted_7d = 0 THEN TRUE
-                ELSE FALSE
-            END as data_missing_flag,
-            CASE
-                WHEN r.most_recent_reporting_end_date < CURRENT_DATE - 1 THEN TRUE
-                ELSE FALSE
-            END as data_stale_flag,
-            CASE
-                WHEN (r.contacted_7d IS NULL OR r.contacted_7d = 0)
-                    OR r.reply_rate_7d < 0.02 OR r.bounce_pct_7d >= 0.04
-                    OR r.positive_reply_rate_7d < 0.05
-                    OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                        AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.5)
-                THEN 'Red'
-                WHEN r.positive_reply_rate_7d < 0.08 AND r.reply_rate_7d >= 0.02
-                    OR (c.weekly_target_int IS NOT NULL AND c.weekly_target_int > 0
-                        AND COALESCE(r.new_leads_reached_7d, 0)::numeric / c.weekly_target_int < 0.8)
-                THEN 'Yellow'
-                ELSE 'Green'
+                -- CRITICAL OVERRIDES: Any of these = Red regardless of votes
+                WHEN m.contacted_7d = 0 THEN 'Red'
+                WHEN m.reply_rate_7d < 0.015 OR m.bounce_pct_7d >= 0.04 THEN 'Red'
+                WHEN m.weekly_target_int IS NOT NULL AND m.weekly_target_int > 0
+                    AND (m.new_leads_reached_7d::numeric / (m.weekly_target_int::numeric * %s / 7.0)) < 0.5 THEN 'Red'
+                
+                -- Count votes from individual RAGs
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Red' THEN 1 ELSE 0 END)
+                ) >= 3 THEN 'Red'
+                
+                -- 2+ Red = Red
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Red' THEN 1 ELSE 0 END)
+                ) >= 2 AND (
+                    (CASE WHEN m.rr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Amber' THEN 1 ELSE 0 END)
+                ) >= 1 THEN 'Red'
+                
+                -- 3+ Amber = Amber
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Amber' THEN 1 ELSE 0 END)
+                ) >= 3 THEN 'Yellow'
+                
+                -- 4+ Green = Green
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Green' THEN 1 ELSE 0 END)
+                ) >= 4 THEN 'Green'
+                
+                -- 3 Green + 2 Amber = Amber
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Green' THEN 1 ELSE 0 END)
+                ) = 3 AND (
+                    (CASE WHEN m.rr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Amber' THEN 1 ELSE 0 END)
+                ) = 2 THEN 'Yellow'
+                
+                -- 3 Green + (1 Red OR 1 Amber) = Amber
+                WHEN (
+                    (CASE WHEN m.rr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Green' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Green' THEN 1 ELSE 0 END)
+                ) = 3 AND (
+                    (CASE WHEN m.rr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Red' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.rr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.prr_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.pcpl_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.br_rag = 'Amber' THEN 1 ELSE 0 END) +
+                    (CASE WHEN m.volume_rag = 'Amber' THEN 1 ELSE 0 END)
+                ) >= 1 THEN 'Yellow'
+                
+                -- Default conservative: Amber
+                ELSE 'Yellow'
             END as rag_status,
             NULL as rag_reason,
-            r.most_recent_reporting_end_date
-        FROM active_clients_v1 c
-        LEFT JOIN client_7d_rollup_v1_local r USING (client_id)
+            m.most_recent_reporting_end_date
+        FROM metric_rags m
     """
 
-    rowcount = local_db.execute_write(dashboard_query)
-    logger.info(f"Computed {rowcount} dashboard rows")
+    # Execute query with days_in_period parameter (used 5 times in the query)
+    rowcount = local_db.execute_write(dashboard_query, (days_in_period, days_in_period, days_in_period, days_in_period, days_in_period, days_in_period))
+    logger.info(f"Computed {rowcount} dashboard rows with pro-rated targets (period: {days_in_period} days)")
 
-    # Update rag_reason
+    # Update rag_reason based on hybrid voting system
     update_reasons_query = """
         UPDATE client_health_dashboard_v1_local
         SET rag_reason = CASE
             WHEN data_missing_flag THEN
                 'Data missing: no contacted volume in last 7 days'
+            WHEN reply_rate_7d < 0.015 THEN
+                'Critical: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '% (below 1.5%)'
+            WHEN bounce_pct_7d >= 0.04 THEN
+                'Critical: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '% (4% or higher)'
+            WHEN weekly_target_int IS NOT NULL AND weekly_target_int > 0
+                AND volume_attainment < 0.5 THEN
+                'Critical: volume attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '% (below 50%)'
+            WHEN reply_rate_7d IS NOT NULL AND reply_rate_7d < 0.02
+                AND replies_7d > 0 AND positives_7d > 0
+                AND (positives_7d::numeric / replies_7d) < 0.05 THEN
+                'Multiple issues: reply rate ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%, positive rate ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%'
+            WHEN volume_flag AND deliverability_flag THEN
+                'Multiple issues: volume and deliverability concerns'
+            WHEN volume_flag THEN
+                'Volume below target: attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '%'
             WHEN deliverability_flag THEN
                 CASE
                     WHEN reply_rate_7d < 0.02 THEN
                         'Deliverability risk: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%'
-                    WHEN bounce_pct_7d >= 0.04 THEN
+                    WHEN bounce_pct_7d >= 0.05 THEN
                         'Deliverability risk: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '%'
                     ELSE 'Deliverability risk: check reply and bounce rates'
                 END
-            WHEN weekly_target_int IS NOT NULL AND weekly_target_int > 0
-                AND new_leads_reached_7d::numeric / weekly_target_int < 0.5 THEN
-                'Volume critically low: attainment is ' || ROUND(volume_attainment::numeric, 2) || '%'
-            WHEN mmf_flag THEN
-                'MMF risk: positive reply rate is ' || ROUND((positive_reply_rate_7d * 100)::numeric, 2) || '%'
-            WHEN volume_flag THEN
-                'Volume below target: attainment is ' || ROUND(volume_attainment::numeric, 2) || '%'
+            WHEN replies_7d > 0 AND positives_7d > 0
+                AND (positives_7d::numeric / replies_7d) < 0.05 THEN
+                'MMF risk: positive reply rate is ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%'
+            WHEN positives_7d > 0
+                AND (new_leads_reached_7d::numeric / positives_7d) > 800 THEN
+                'PCPL high: ' || ROUND((new_leads_reached_7d::numeric / positives_7d), 1) || ' leads per positive reply'
             ELSE 'Performance within acceptable thresholds'
         END
     """
@@ -604,8 +760,8 @@ def main():
             days_back=int(os.getenv('INGEST_DAYS_BACK', 30))
         )
         build_client_mapping(local_db)
-        compute_7d_rollups(local_db)
-        compute_dashboard_dataset(local_db)
+        days_in_period = compute_7d_rollups(local_db)
+        compute_dashboard_dataset(local_db, days_in_period)
         track_unmatched_mappings(local_db)
 
         # Close connections

@@ -683,6 +683,40 @@ function PositiveReplyRateBadge({ value, positives, replies }: { value: number |
   );
 }
 
+// Target Status Badge - Binary Red/Green based on new_leads vs prorated_target
+function TargetStatusBadge({ proratedTarget, newLeads }: { proratedTarget: number | null; newLeads: number }) {
+  if (proratedTarget === null || proratedTarget === 0) {
+    return <span className="text-slate-400 text-xs">—</span>;
+  }
+
+  const isAboveTarget = newLeads >= proratedTarget;
+  
+  let color = isAboveTarget ? 'text-emerald-700' : 'text-red-700';
+  let bg = isAboveTarget ? 'bg-emerald-50' : 'bg-red-50';
+  let border = isAboveTarget ? 'border-emerald-200' : 'border-red-200';
+
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <Tooltip content={`New Leads: ${formatNumber(newLeads)} / Target (Expected): ${formatNumber(Math.round(proratedTarget))} • ${isAboveTarget ? 'At or above target' : 'Below target'}`}>
+        <span
+          className={clsx(
+            'inline-flex items-center px-2.5 py-1 rounded-md',
+            bg,
+            color,
+            border,
+            'border font-semibold text-xs tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 rounded-md'
+          )}
+          aria-label={`Target status: ${isAboveTarget ? 'At/Above target' : 'Below target'}`}
+          tabIndex={0}
+        >
+          {formatNumber(Math.round(proratedTarget))}
+        </span>
+      </Tooltip>
+      <span className="text-[10px] text-slate-500 tabular-nums">{formatNumber(newLeads)}</span>
+    </div>
+  );
+}
+
 // Attainment Badge with progress bar - NOW COMPARING NEW LEADS TO TARGET
 function AttainmentBadge({ value, weeklyTarget, newLeads }: { value: number | null; weeklyTarget: number | null; newLeads: number }) {
   if (weeklyTarget === null) {
@@ -703,13 +737,11 @@ function AttainmentBadge({ value, weeklyTarget, newLeads }: { value: number | nu
   if (percentage < 50) {
     color = 'text-red-700 font-semibold';
     bgColor = 'bg-red-500';
-  } else if (percentage < 80) {
+  } else if (percentage < 90) {
     color = 'text-amber-700 font-semibold';
     bgColor = 'bg-amber-500';
-  } else if (percentage < 100) {
-    color = 'text-blue-700';
-    bgColor = 'bg-blue-500';
   }
+  // 90% and above is green (default)
 
   return (
     <Tooltip content={`${percentage.toFixed(1)}% of weekly target • New Leads: ${formatNumber(newLeads)} / Target: ${formatNumber(weeklyTarget)}`}>
@@ -739,13 +771,13 @@ function PCPLBadge({ newLeads, positives }: { newLeads: number; positives: numbe
   const displayValue = pcpl !== null ? pcpl.toFixed(1) : 'N/A';
 
   // Color coding: lower is better (green), higher is worse (red/amber)
-  // Thresholds: 0-300 green, 300-800 amber, 800+ red
+  // Thresholds: 0-500 green, 501-800 amber, 800+ red
   let colorClass = 'text-slate-700';
   if (pcpl !== null) {
-    if (pcpl <= 300) {
-      colorClass = 'text-emerald-700'; // Great: 0-300 leads per positive
+    if (pcpl <= 500) {
+      colorClass = 'text-emerald-700'; // Great: 0-500 leads per positive
     } else if (pcpl <= 800) {
-      colorClass = 'text-amber-700'; // Okay: 300-800 leads per positive
+      colorClass = 'text-amber-700'; // Okay: 501-800 leads per positive
     } else {
       colorClass = 'text-red-700'; // Poor: more than 800 leads per positive
     }
@@ -829,7 +861,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -845,11 +877,12 @@ export default function DashboardClient() {
   const [sortField, setSortField] = useState<SortField>('new_leads_reached_7d');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [selectedClients, setSelectedClients] = useState<Set<number>>(new Set());
-  const [hoveredClient, setHoveredClient] = useState<ClientRow | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   // Local search input state for immediate feedback
   const [searchInputValue, setSearchInputValue] = useState<string>('');
+  // Column visibility toggle
+  const [showEmailsSentColumn, setShowEmailsSentColumn] = useState<boolean>(false);
 
   // ==========================================================================
   // URL STATE MANAGEMENT
@@ -905,6 +938,18 @@ export default function DashboardClient() {
 
     const pcplRange = searchParams.get('pcpl_range');
     if (pcplRange) urlFilters.pcpl_range = pcplRange;
+
+    const replyRateRange = searchParams.get('reply_rate_range');
+    if (replyRateRange) urlFilters.reply_rate_range = replyRateRange;
+
+    const bounceRateRange = searchParams.get('bounce_rate_range');
+    if (bounceRateRange) urlFilters.bounce_rate_range = bounceRateRange;
+
+    const positiveReplyRateRange = searchParams.get('positive_reply_rate_range');
+    if (positiveReplyRateRange) urlFilters.positive_reply_rate_range = positiveReplyRateRange;
+
+    const targetStatus = searchParams.get('target_status');
+    if (targetStatus) urlFilters.target_status = targetStatus as 'below' | 'above';
 
     // Update filters from URL if any exist
     if (Object.keys(urlFilters).length > 0) {
@@ -990,8 +1035,9 @@ export default function DashboardClient() {
     setLoading(true);
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
-      // Skip PCPL filter for API (it's a calculated field, will be filtered client-side)
-      if (key !== 'pcpl_range' && value !== undefined && value !== null && value !== '') {
+      // Skip calculated field filters for API (will be filtered client-side)
+      const calculatedFields = ['pcpl_range', 'reply_rate_range', 'bounce_rate_range', 'positive_reply_rate_range', 'target_status'];
+      if (!calculatedFields.includes(key) && value !== undefined && value !== null && value !== '') {
         params.append(key, String(value));
       }
     });
@@ -1011,12 +1057,93 @@ export default function DashboardClient() {
             if (pcpl === null) return false;
 
             switch (filters.pcpl_range) {
-              case '0-300':
-                return pcpl <= 300;
-              case '300-800':
-                return pcpl > 300 && pcpl <= 800;
+              case '0-500':
+                return pcpl <= 500;
+              case '501-800':
+                return pcpl > 500 && pcpl <= 800;
               case '800+':
                 return pcpl > 800;
+              default:
+                return true;
+            }
+          });
+        }
+
+        // Apply Reply Rate filter client-side
+        if (filters.reply_rate_range) {
+          filteredData = filteredData.filter((c: ClientRow) => {
+            if (c.reply_rate_7d === null) return false;
+            const percentage = c.reply_rate_7d * 100;
+
+            switch (filters.reply_rate_range) {
+              case '0-1.5':
+                return percentage < 1.5;
+              case '1.5-2':
+                return percentage >= 1.5 && percentage < 2;
+              case '2+':
+                return percentage >= 2;
+              default:
+                return true;
+            }
+          });
+        }
+
+        // Apply Bounce Rate filter client-side
+        if (filters.bounce_rate_range) {
+          filteredData = filteredData.filter((c: ClientRow) => {
+            if (c.bounce_pct_7d === null) return false;
+            const percentage = c.bounce_pct_7d * 100;
+
+            switch (filters.bounce_rate_range) {
+              case '0-2':
+                return percentage < 2;
+              case '2-4':
+                return percentage >= 2 && percentage < 4;
+              case '4+':
+                return percentage >= 4;
+              default:
+                return true;
+            }
+          });
+        }
+
+        // Apply Positive Reply Rate filter client-side
+        // Calculate as positives / replies (same as badge) for consistency
+        if (filters.positive_reply_rate_range) {
+          filteredData = filteredData.filter((c: ClientRow) => {
+            const replies = c.replies_7d || 0;
+            const positives = c.positives_7d || 0;
+            const positiveRate = replies > 0 ? positives / replies : null;
+            
+            if (positiveRate === null) return false;
+            const percentage = positiveRate * 100;
+
+            switch (filters.positive_reply_rate_range) {
+              case '0-5':
+                return percentage < 5;
+              case '5-8':
+                return percentage >= 5 && percentage < 8;
+              case '8+':
+                return percentage >= 8;
+              default:
+                return true;
+            }
+          });
+        }
+
+        // Apply Target Status filter client-side (based on prorated_target comparison)
+        if (filters.target_status) {
+          filteredData = filteredData.filter((c: ClientRow) => {
+            if (c.prorated_target === null || c.prorated_target === 0) return false;
+            
+            const newLeads = c.new_leads_reached_7d || 0;
+            const isAboveTarget = newLeads >= c.prorated_target;
+
+            switch (filters.target_status) {
+              case 'below':
+                return !isAboveTarget; // Below target (Red)
+              case 'above':
+                return isAboveTarget; // At/Above target (Green)
               default:
                 return true;
             }
@@ -1062,6 +1189,10 @@ export default function DashboardClient() {
       if (sortField === 'pcpl') {
         aVal = a.positives_7d > 0 ? a.new_leads_reached_7d / a.positives_7d : null;
         bVal = b.positives_7d > 0 ? b.new_leads_reached_7d / b.positives_7d : null;
+      } else if (sortField === 'prorated_target') {
+        // Ensure numeric conversion for proper sorting
+        aVal = a.prorated_target !== null ? Number(a.prorated_target) : null;
+        bVal = b.prorated_target !== null ? Number(b.prorated_target) : null;
       } else {
         aVal = a[sortField];
         bVal = b[sortField];
@@ -1075,8 +1206,12 @@ export default function DashboardClient() {
         return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
 
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      // Handle numeric comparison (including converted strings)
+      const aNum = typeof aVal === 'number' ? aVal : Number(aVal);
+      const bNum = typeof bVal === 'number' ? bVal : Number(bVal);
+      
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return sortOrder === 'asc' ? aNum - bNum : bNum - aNum;
       }
 
       return 0;
@@ -1490,9 +1625,80 @@ export default function DashboardClient() {
                       aria-label="Filter by PCPL"
                     >
                       <option value="">All PCPL</option>
-                      <option value="0-300">0-300 (Green)</option>
-                      <option value="300-800">300-800 (Amber)</option>
+                      <option value="0-500">0-500 (Green)</option>
+                      <option value="501-800">501-800 (Amber)</option>
                       <option value="800+">800+ (Red)</option>
+                    </select>
+
+                    <select
+                      className={clsx(
+                        'px-4 py-2.5 text-xs font-medium text-slate-700',
+                        'bg-white border border-slate-300 rounded-md',
+                        'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:border-slate-400',
+                        'cursor-pointer'
+                      )}
+                      style={{ transition: tokens.transition }}
+                      value={filters.reply_rate_range || ''}
+                      onChange={(e) => setFilters({ ...filters, reply_rate_range: e.target.value || undefined })}
+                      aria-label="Filter by Reply Rate"
+                    >
+                      <option value="">All Reply Rate</option>
+                      <option value="0-1.5">&lt;1.5% (Red)</option>
+                      <option value="1.5-2">1.5-2% (Amber)</option>
+                      <option value="2+">≥2% (Green)</option>
+                    </select>
+
+                    <select
+                      className={clsx(
+                        'px-4 py-2.5 text-xs font-medium text-slate-700',
+                        'bg-white border border-slate-300 rounded-md',
+                        'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:border-slate-400',
+                        'cursor-pointer'
+                      )}
+                      style={{ transition: tokens.transition }}
+                      value={filters.bounce_rate_range || ''}
+                      onChange={(e) => setFilters({ ...filters, bounce_rate_range: e.target.value || undefined })}
+                      aria-label="Filter by Bounce Rate"
+                    >
+                      <option value="">All Bounce Rate</option>
+                      <option value="0-2">&lt;2% (Green)</option>
+                      <option value="2-4">2-4% (Amber)</option>
+                      <option value="4+">≥4% (Red)</option>
+                    </select>
+
+                    <select
+                      className={clsx(
+                        'px-4 py-2.5 text-xs font-medium text-slate-700',
+                        'bg-white border border-slate-300 rounded-md',
+                        'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:border-slate-400',
+                        'cursor-pointer'
+                      )}
+                      style={{ transition: tokens.transition }}
+                      value={filters.positive_reply_rate_range || ''}
+                      onChange={(e) => setFilters({ ...filters, positive_reply_rate_range: e.target.value || undefined })}
+                      aria-label="Filter by Positive Reply Rate"
+                    >
+                      <option value="">All Positive Rate</option>
+                      <option value="0-5">&lt;5% (Red)</option>
+                      <option value="5-8">5-8% (Amber)</option>
+                      <option value="8+">≥8% (Green)</option>
+                    </select>
+
+                    <select
+                      className={clsx(
+                        'px-4 py-2.5 text-xs font-medium text-slate-700',
+                        'bg-white border border-slate-300 rounded-md',
+                        'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:border-slate-400',
+                        'cursor-pointer'
+                      )}
+                      style={{ transition: tokens.transition }}
+                      value={filters.target_status || ''}
+                      onChange={(e) => setFilters({ ...filters, target_status: (e.target.value as 'below' | 'above' | '') || undefined })}
+                      aria-label="Filter by Target Status"
+                    >
+                      <option value="">All Target Status</option>
+                      <option value="below">Below Target (Red)</option>
+                      <option value="above">At/Above Target (Green)</option>
                     </select>
                   </div>
 
@@ -1511,6 +1717,19 @@ export default function DashboardClient() {
                   )}
                 </div>
               )}
+
+              {/* Column Visibility Toggle */}
+              <div className="flex items-center gap-2 px-4 py-2 border-t border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showEmailsSentColumn}
+                    onChange={(e) => setShowEmailsSentColumn(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                  />
+                  <span className="text-xs font-medium text-slate-700">Show "Emails Sent (7d)" column</span>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -1557,17 +1776,27 @@ export default function DashboardClient() {
                     onSort={handleSort}
                     align="center"
                   />
+                  {showEmailsSentColumn && (
+                    <SortableHeader
+                      field="contacted_7d"
+                      label="Emails Sent (7d)"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
                   <SortableHeader
-                    field="contacted_7d"
-                    label="Emails Sent (7d)"
+                    field="new_leads_reached_7d"
+                    label="New Leads (7d)"
                     sortField={sortField}
                     sortOrder={sortOrder}
                     onSort={handleSort}
                     align="right"
                   />
                   <SortableHeader
-                    field="new_leads_reached_7d"
-                    label="New Leads (7d)"
+                    field="prorated_target"
+                    label="Target (Expected)"
                     sortField={sortField}
                     sortOrder={sortOrder}
                     onSort={handleSort}
@@ -1649,8 +1878,6 @@ export default function DashboardClient() {
                         index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                       )}
                       style={{ transition: tokens.transition }}
-                      onMouseEnter={() => setHoveredClient(client)}
-                      onMouseLeave={() => setHoveredClient(null)}
                     >
                       <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -1688,15 +1915,23 @@ export default function DashboardClient() {
                       <td className="px-4 py-4 text-center">
                         <RAGStatus status={client.rag_status} />
                       </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="font-semibold text-slate-900 text-sm tabular-nums">
-                          {formatNumber(client.contacted_7d)}
-                        </div>
-                      </td>
+                      {showEmailsSentColumn && (
+                        <td className="px-4 py-4 text-right">
+                          <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                            {formatNumber(client.contacted_7d)}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-4 py-4 text-right">
                         <div className="font-semibold text-slate-900 text-sm tabular-nums">
                           {formatNumber(client.new_leads_reached_7d)}
                         </div>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <TargetStatusBadge
+                          proratedTarget={client.prorated_target}
+                          newLeads={client.new_leads_reached_7d || 0}
+                        />
                       </td>
                       <td className="px-4 py-4 text-right">
                         <div className="text-sm text-slate-700 tabular-nums">
@@ -1766,46 +2001,6 @@ export default function DashboardClient() {
         </div>
       </div>
 
-      {/* HOVER SUMMARY TOOLTIP */}
-      {hoveredClient && (
-        <div
-          className="fixed bottom-6 right-6 bg-slate-900 text-white p-4 rounded-lg shadow-xl z-50 text-xs max-w-xs"
-          style={{ boxShadow: tokens.shadows.card }}
-        >
-          <div className="font-semibold text-sm mb-2">{hoveredClient.client_code}</div>
-          <div className="space-y-1.5 text-slate-300">
-            <div className="flex justify-between gap-4">
-              <span>Company:</span>
-              <span className="font-medium text-white tabular-nums">{hoveredClient.client_company_name || hoveredClient.client_name || 'No company name'}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>New Leads:</span>
-              <span className="font-medium text-white tabular-nums">{formatNumber(hoveredClient.new_leads_reached_7d)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Emails Sent:</span>
-              <span className="font-medium text-white tabular-nums">{formatNumber(hoveredClient.contacted_7d)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Reply Rate:</span>
-              <span className="font-medium text-white tabular-nums">{hoveredClient.reply_rate_7d ? formatPercentage(hoveredClient.reply_rate_7d, 2) : 'N/A'}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Bounce Rate:</span>
-              <span className="font-medium text-white tabular-nums">{hoveredClient.bounce_pct_7d ? formatPercentage(hoveredClient.bounce_pct_7d, 2) : 'N/A'}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Positives:</span>
-              <span className="font-medium text-white tabular-nums">{formatNumber(hoveredClient.positives_7d)}</span>
-            </div>
-            {hoveredClient.rag_reason && (
-              <div className="pt-2 mt-2 border-t border-slate-700 text-amber-400 italic">
-                {hoveredClient.rag_reason}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </main>
   );
 }
