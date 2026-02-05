@@ -25,6 +25,7 @@ export interface ClientRow {
   prorated_target: number | null;
   volume_attainment: number | null;
   pcpl_proxy_7d: number | null;
+  not_contacted_leads: number;
   deliverability_flag: boolean;
   volume_flag: boolean;
   mmf_flag: boolean;

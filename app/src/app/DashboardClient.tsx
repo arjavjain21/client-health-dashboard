@@ -861,7 +861,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -1251,6 +1251,7 @@ export default function DashboardClient() {
       'PCPL',
       'Target',
       'Volume Attainment',
+      'Not Contacted',
       'Issues'
     ];
 
@@ -1276,6 +1277,7 @@ export default function DashboardClient() {
         pcpl,
         c.weekly_target_int || 'N/A',
         c.weekly_target_int ? ((c.new_leads_reached_7d || 0) / c.weekly_target_int * 100).toFixed(1) + '%' : 'N/A',
+        c.not_contacted_leads || 0,
         [c.deliverability_flag ? 'Deliverability' : null,
          c.volume_flag ? 'Volume' : null,
          c.mmf_flag ? 'MMF' : null,
@@ -1858,6 +1860,14 @@ export default function DashboardClient() {
                     onSort={handleSort}
                     align="right"
                   />
+                  <SortableHeader
+                    field="not_contacted_leads"
+                    label="Not Contacted"
+                    sortField={sortField}
+                    sortOrder={sortOrder}
+                    onSort={handleSort}
+                    align="right"
+                  />
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
                     Issues
                   </th>
@@ -1976,6 +1986,13 @@ export default function DashboardClient() {
                           weeklyTarget={client.weekly_target_int}
                           newLeads={client.new_leads_reached_7d}
                         />
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <Tooltip content="Leads with STARTED status (not yet contacted) from SmartLead API">
+                          <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                            {formatNumber(client.not_contacted_leads || 0)}
+                          </div>
+                        </Tooltip>
                       </td>
                       <td className="px-4 py-4">
                         <IssuesFlags client={client} />

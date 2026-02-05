@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
         new_leads_reached_7d,
         prorated_target,
         volume_attainment, pcpl_proxy_7d,
+        not_contacted_leads,
         deliverability_flag, volume_flag, mmf_flag,
         data_missing_flag, data_stale_flag,
         rag_status, rag_reason,

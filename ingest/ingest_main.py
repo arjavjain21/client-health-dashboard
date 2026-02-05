@@ -11,6 +11,17 @@ from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 from database import ReadOnlyConnection, LocalDatabase
 
+# Import SmartLead API functions for not_contacted leads
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'ingest'))
+from consolidate_leads_by_client import (
+    create_session,
+    fetch_active_campaigns,
+    fetch_all_clients,
+    process_all_campaigns,
+    consolidate_by_client
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -97,6 +108,105 @@ def normalize_client_name(name: str | None) -> str:
     if not name:
         return ''
     return name.strip().lower()
+
+
+# ============================================================================
+# SMARTLEAD NOT CONTACTED LEADS INTEGRATION
+# ============================================================================
+
+def fetch_not_contacted_leads_from_smartlead():
+    """
+    Fetch not contacted lead counts from SmartLead API.
+
+    Returns:
+        dict: Maps normalized client_name to not_contacted count
+              {client_name: not_contacted_count}
+    """
+    logger.info("Fetching not contacted leads from SmartLead API...")
+
+    try:
+        # Create API session
+        session = create_session()
+
+        # Fetch campaigns and process
+        campaigns = fetch_active_campaigns(session)
+        if not campaigns:
+            logger.warning("No active campaigns found in SmartLead API")
+            return {}
+
+        client_map = fetch_all_clients(session)
+
+        # Process campaigns (this may take 10-15 minutes)
+        logger.info(f"Processing {len(campaigns)} campaigns for not contacted leads...")
+        campaign_data = process_all_campaigns(campaigns, client_map)
+
+        # Consolidate by client
+        client_summaries = consolidate_by_client(campaign_data)
+
+        # Convert to dict: normalized client_name -> not_contacted count
+        not_contacted_map = {}
+        for summary in client_summaries:
+            normalized_name = normalize_client_name(summary.client_name)
+            not_contacted_map[normalized_name] = summary.not_contacted
+
+        session.close()
+
+        logger.info(f"Fetched not contacted data for {len(not_contacted_map)} clients")
+        return not_contacted_map
+
+    except Exception as e:
+        logger.error(f"Failed to fetch not contacted leads from SmartLead: {e}", exc_info=True)
+        # Return empty dict on failure - dashboard will show 0 for all clients
+        return {}
+
+
+def update_not_contacted_leads(local_db: LocalDatabase, not_contacted_map: dict):
+    """
+    Update not_contacted_leads column in dashboard table.
+
+    Args:
+        local_db: Local database connection
+        not_contacted_map: Dict of {normalized_client_name: not_contacted_count}
+    """
+    logger.info("Updating not_contacted_leads in dashboard...")
+
+    try:
+        # Get all clients from dashboard
+        query = """
+            SELECT client_id, client_code, client_name
+            FROM client_health_dashboard_v1_local
+        """
+        clients = local_db.execute_read(query)
+
+        updated_count = 0
+        for client in clients:
+            client_id = client['client_id']
+            client_code = client['client_code']
+            client_name = client['client_name'] or client_code
+
+            # Try both normalized client_name and client_code for matching
+            normalized_name = normalize_client_name(client_name)
+            normalized_code = normalize_client_name(client_code)
+
+            # Find not_contacted count (try client_name first, then client_code)
+            not_contacted = not_contacted_map.get(normalized_name)
+            if not_contacted is None:
+                not_contacted = not_contacted_map.get(normalized_code, 0)
+
+            # Update this client
+            update_query = """
+                UPDATE client_health_dashboard_v1_local
+                SET not_contacted_leads = %s
+                WHERE client_id = %s
+            """
+            local_db.execute_write(update_query, (not_contacted, client_id))
+            updated_count += 1
+
+        logger.info(f"Updated not_contacted_leads for {updated_count} clients")
+
+    except Exception as e:
+        logger.error(f"Failed to update not_contacted_leads: {e}", exc_info=True)
+        raise
 
 
 # ============================================================================
@@ -762,6 +872,15 @@ def main():
         build_client_mapping(local_db)
         days_in_period = compute_7d_rollups(local_db)
         compute_dashboard_dataset(local_db, days_in_period)
+
+        # Fetch and update not contacted leads from SmartLead API
+        logger.info("Starting SmartLead not contacted leads integration...")
+        not_contacted_map = fetch_not_contacted_leads_from_smartlead()
+        if not_contacted_map:
+            update_not_contacted_leads(local_db, not_contacted_map)
+        else:
+            logger.warning("No not_contacted data fetched from SmartLead, all clients will show 0")
+
         track_unmatched_mappings(local_db)
 
         # Close connections
