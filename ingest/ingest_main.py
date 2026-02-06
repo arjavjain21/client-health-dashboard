@@ -180,9 +180,9 @@ def update_not_contacted_leads(local_db: LocalDatabase, not_contacted_map: dict)
 
         updated_count = 0
         for client in clients:
-            client_id = client['client_id']
-            client_code = client['client_code']
-            client_name = client['client_name'] or client_code
+            client_id = client[0]  # client_id (tuple index 0)
+            client_code = client[1]  # client_code (tuple index 1)
+            client_name = client[2] or client_code  # client_name (tuple index 2)
 
             # Try both normalized client_name and client_code for matching
             normalized_name = normalize_client_name(client_name)
