@@ -3,10 +3,15 @@
 Client Health Dashboard v1 - Main Ingestion Script
 
 This script orchestrates the entire data ingestion pipeline.
+
+Usage:
+    python ingest_main.py              # Full ingestion (includes SmartLead API)
+    python ingest_main.py --skip-smartlead  # Quick refresh (skips SmartLead API)
 """
 import os
 import re
 import logging
+import argparse
 from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 from database import ReadOnlyConnection, LocalDatabase
@@ -24,6 +29,15 @@ from consolidate_leads_by_client import (
 
 # Load environment variables
 load_dotenv()
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='Client Health Dashboard Ingestion')
+parser.add_argument(
+    '--skip-smartlead',
+    action='store_true',
+    help='Skip SmartLead API call for not_contacted_leads (use for quick manual refresh)'
+)
+args = parser.parse_args()
 
 # Configure logging
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
@@ -874,12 +888,17 @@ def main():
         compute_dashboard_dataset(local_db, days_in_period)
 
         # Fetch and update not contacted leads from SmartLead API
-        logger.info("Starting SmartLead not contacted leads integration...")
-        not_contacted_map = fetch_not_contacted_leads_from_smartlead()
-        if not_contacted_map:
-            update_not_contacted_leads(local_db, not_contacted_map)
+        # Only run during scheduled cron jobs, not on manual refresh
+        if args.skip_smartlead:
+            logger.info("Skipping SmartLead API call (manual refresh mode)")
+            logger.info("Existing not_contacted_leads values will be preserved")
         else:
-            logger.warning("No not_contacted data fetched from SmartLead, all clients will show 0")
+            logger.info("Starting SmartLead not contacted leads integration...")
+            not_contacted_map = fetch_not_contacted_leads_from_smartlead()
+            if not_contacted_map:
+                update_not_contacted_leads(local_db, not_contacted_map)
+            else:
+                logger.warning("No not_contacted data fetched from SmartLead, all clients will show 0")
 
         track_unmatched_mappings(local_db)
 
@@ -889,7 +908,10 @@ def main():
         local_db.close()
 
         logger.info("=" * 60)
-        logger.info("Ingestion completed successfully")
+        if args.skip_smartlead:
+            logger.info("Quick refresh completed successfully (SmartLead skipped)")
+        else:
+            logger.info("Full ingestion completed successfully (including SmartLead)")
         logger.info("=" * 60)
 
     except Exception as e:

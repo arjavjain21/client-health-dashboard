@@ -999,25 +999,33 @@ export default function DashboardClient() {
     setRefreshMessage(null);
 
     try {
-      const response = await fetch('/api/refresh', {
+      const response = await fetch('/api/dashboard/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        setRefreshMessage('✓ Data refresh started! This will take 30-60 seconds. Refresh the page in a minute.');
+      if (response.ok && data.success) {
+        setRefreshMessage(`✓ Refreshed in ${data.duration}! (Not contacted leads: updated daily at 3:00 AM UTC)`);
 
-        // Clear message after 10 seconds
-        setTimeout(() => setRefreshMessage(null), 10000);
+        // Auto-refresh the page data after 2 seconds
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else if (response.status === 207) {
+        // Partial success (207 Multi-Status)
+        setRefreshMessage(`⚠ Refreshed with warnings in ${data.duration}. Check console for details.`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
       } else {
-        setRefreshMessage('✗ Failed to start refresh. Please try again or contact tech team.');
+        setRefreshMessage('✗ Failed to refresh. Please try again or contact tech team.');
         setTimeout(() => setRefreshMessage(null), 5000);
       }
     } catch (error) {
       console.error('Refresh error:', error);
-      setRefreshMessage('✗ Failed to start refresh. Please try again.');
+      setRefreshMessage('✗ Failed to refresh. Please try again.');
       setTimeout(() => setRefreshMessage(null), 5000);
     } finally {
       setRefreshing(false);
