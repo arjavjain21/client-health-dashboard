@@ -34,6 +34,7 @@ export interface ClientRow {
   rag_status: 'Red' | 'Yellow' | 'Green';
   rag_reason: string | null;
   most_recent_reporting_end_date: string | null;
+  bonus_pool_monthly: number | null;
   computed_at: string;
 }
 

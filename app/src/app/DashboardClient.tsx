@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import type { ClientRow, FilterOptions } from '@/lib/types';
+import { ColumnSelector, type ColumnDefinition } from '@/components/ColumnSelector';
 
 // ============================================================================
 // DESIGN TOKENS
@@ -55,6 +56,102 @@ const tokens = {
   // Smooth transitions
   transition: '150ms cubic-bezier(0.16, 1, 0.3, 1)',
 };
+
+// ============================================================================
+// COLUMN DEFINITIONS
+// ============================================================================
+
+/**
+ * Column definitions for the client health dashboard table
+ * Used for column visibility toggle functionality
+ */
+const COLUMN_DEFINITIONS: ColumnDefinition[] = [
+  // Health & Status
+  {
+    id: 'rag_status',
+    label: 'Health (RAG)',
+    category: 'Health & Status',
+    defaultVisible: true,
+  },
+  {
+    id: 'contacted_7d',
+    label: 'Emails Sent (7d)',
+    category: 'Health & Status',
+    defaultVisible: false,
+  },
+  {
+    id: 'new_leads_reached_7d',
+    label: 'New Leads (7d)',
+    category: 'Health & Status',
+    defaultVisible: true,
+  },
+
+  // Performance Metrics
+  {
+    id: 'prorated_target',
+    label: 'Target (Expected)',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'replies_7d',
+    label: 'Replies (7d)',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'reply_rate_7d',
+    label: 'Reply Rate',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'bounce_pct_7d',
+    label: 'Bounce Rate',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'positives_7d',
+    label: 'Positive Replies (7d)',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'positive_reply_rate_7d',
+    label: 'Positive Reply Rate',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+  {
+    id: 'pcpl',
+    label: 'PCPL',
+    category: 'Performance Metrics',
+    defaultVisible: true,
+  },
+
+  // Target & Attainment
+  {
+    id: 'volume_attainment',
+    label: 'Target (Attainment)',
+    category: 'Target & Attainment',
+    defaultVisible: true,
+  },
+  {
+    id: 'not_contacted_leads',
+    label: 'Not Contacted',
+    category: 'Target & Attainment',
+    defaultVisible: true,
+  },
+
+  // Financial
+  {
+    id: 'bonus_pool_monthly',
+    label: 'Bonus Pool',
+    category: 'Financial',
+    defaultVisible: true,  // Now visible with data from Supabase
+  },
+];
 
 // ============================================================================
 // UTILITIES
@@ -426,6 +523,7 @@ function SortableHeader({
   sortOrder,
   onSort,
   align = 'left',
+  sticky = false,
 }: {
   field: SortField;
   label: string;
@@ -433,6 +531,7 @@ function SortableHeader({
   sortOrder: 'asc' | 'desc' | null;
   onSort: (field: SortField) => void;
   align?: 'left' | 'center' | 'right';
+  sticky?: boolean;
 }) {
   const isActive = sortField === field;
 
@@ -443,8 +542,10 @@ function SortableHeader({
         align === 'center' && 'text-center',
         align === 'right' && 'text-right',
         align === 'left' && 'text-left',
-        isActive ? 'border-blue-500 text-blue-700' : 'border-slate-200 text-slate-600'
+        isActive ? 'border-blue-500 text-blue-700' : 'border-slate-200 text-slate-600',
+        sticky && 'left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]'
       )}
+      style={sticky ? { position: 'sticky', left: '0' } as React.CSSProperties : undefined}
       role="columnheader"
       aria-sort={
         isActive
@@ -861,7 +962,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -881,8 +982,22 @@ export default function DashboardClient() {
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   // Local search input state for immediate feedback
   const [searchInputValue, setSearchInputValue] = useState<string>('');
-  // Column visibility toggle
-  const [showEmailsSentColumn, setShowEmailsSentColumn] = useState<boolean>(false);
+
+  // Column visibility state - initialize from localStorage or defaults
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('client_dashboard_visible_columns');
+      if (saved) {
+        try {
+          return new Set(JSON.parse(saved));
+        } catch (e) {
+          console.error('Failed to parse saved column visibility:', e);
+        }
+      }
+    }
+    // Default to columns marked as defaultVisible
+    return new Set(COLUMN_DEFINITIONS.filter(col => col.defaultVisible).map(col => col.id));
+  });
 
   // ==========================================================================
   // URL STATE MANAGEMENT
@@ -990,6 +1105,13 @@ export default function DashboardClient() {
     router.push(newPath, { scroll: false });
   }, [filters, sortField, sortOrder, router]);
 
+  // Save column visibility to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('client_dashboard_visible_columns', JSON.stringify(Array.from(visibleColumns)));
+    }
+  }, [visibleColumns]);
+
   // ==========================================================================
   // DATA REFRESH HANDLER
   // ==========================================================================
@@ -1031,6 +1153,31 @@ export default function DashboardClient() {
       setRefreshing(false);
     }
   };
+
+  // ==========================================================================
+  // COLUMN VISIBILITY HANDLERS
+  // ==========================================================================
+
+  const handleColumnToggle = useCallback((columnId: string) => {
+    setVisibleColumns(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(columnId)) {
+        newSet.delete(columnId);
+      } else {
+        newSet.add(columnId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleShowAllColumns = useCallback(() => {
+    setVisibleColumns(new Set(COLUMN_DEFINITIONS.map(col => col.id)));
+  }, []);
+
+  const handleHideAllColumns = useCallback(() => {
+    // Don't allow hiding all columns - keep at least one essential column
+    setVisibleColumns(new Set(['rag_status', 'new_leads_reached_7d']));
+  }, []);
 
   useEffect(() => {
     fetch('/api/dashboard/filters')
@@ -1379,6 +1526,13 @@ export default function DashboardClient() {
                 <DownloadIcon />
                 Export
               </button>
+              <ColumnSelector
+                columns={COLUMN_DEFINITIONS}
+                visibleColumns={visibleColumns}
+                onColumnToggle={handleColumnToggle}
+                onShowAll={handleShowAllColumns}
+                onHideAll={handleHideAllColumns}
+              />
               <Link
                 href="/unmatched"
                 className={clsx(
@@ -1728,18 +1882,6 @@ export default function DashboardClient() {
                 </div>
               )}
 
-              {/* Column Visibility Toggle */}
-              <div className="flex items-center gap-2 px-4 py-2 border-t border-slate-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showEmailsSentColumn}
-                    onChange={(e) => setShowEmailsSentColumn(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                  />
-                  <span className="text-xs font-medium text-slate-700">Show "Emails Sent (7d)" column</span>
-                </label>
-              </div>
             </div>
           </div>
         </div>
@@ -1777,16 +1919,19 @@ export default function DashboardClient() {
                     sortOrder={sortOrder}
                     onSort={handleSort}
                     align="left"
+                    sticky={true}
                   />
-                  <SortableHeader
-                    field="rag_status"
-                    label="Health"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="center"
-                  />
-                  {showEmailsSentColumn && (
+                  {visibleColumns.has('rag_status') && (
+                    <SortableHeader
+                      field="rag_status"
+                      label="Health"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="center"
+                    />
+                  )}
+                  {visibleColumns.has('contacted_7d') && (
                     <SortableHeader
                       field="contacted_7d"
                       label="Emails Sent (7d)"
@@ -1796,86 +1941,116 @@ export default function DashboardClient() {
                       align="right"
                     />
                   )}
-                  <SortableHeader
-                    field="new_leads_reached_7d"
-                    label="New Leads (7d)"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="prorated_target"
-                    label="Target (Expected)"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="replies_7d"
-                    label="Replies (7d)"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="reply_rate_7d"
-                    label="Reply Rate"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="bounce_pct_7d"
-                    label="Bounce Rate"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="positives_7d"
-                    label="Positive Replies (7d)"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="positive_reply_rate_7d"
-                    label="Positive Rate"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="pcpl"
-                    label="PCPL"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="volume_attainment"
-                    label="Target"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
-                  <SortableHeader
-                    field="not_contacted_leads"
-                    label="Not Contacted"
-                    sortField={sortField}
-                    sortOrder={sortOrder}
-                    onSort={handleSort}
-                    align="right"
-                  />
+                  {visibleColumns.has('new_leads_reached_7d') && (
+                    <SortableHeader
+                      field="new_leads_reached_7d"
+                      label="New Leads (7d)"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('prorated_target') && (
+                    <SortableHeader
+                      field="prorated_target"
+                      label="Target (Expected)"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('replies_7d') && (
+                    <SortableHeader
+                      field="replies_7d"
+                      label="Replies (7d)"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('reply_rate_7d') && (
+                    <SortableHeader
+                      field="reply_rate_7d"
+                      label="Reply Rate"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('bounce_pct_7d') && (
+                    <SortableHeader
+                      field="bounce_pct_7d"
+                      label="Bounce Rate"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('positives_7d') && (
+                    <SortableHeader
+                      field="positives_7d"
+                      label="Positive Replies (7d)"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('positive_reply_rate_7d') && (
+                    <SortableHeader
+                      field="positive_reply_rate_7d"
+                      label="Positive Rate"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('pcpl') && (
+                    <SortableHeader
+                      field="pcpl"
+                      label="PCPL"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('volume_attainment') && (
+                    <SortableHeader
+                      field="volume_attainment"
+                      label="Target"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('not_contacted_leads') && (
+                    <SortableHeader
+                      field="not_contacted_leads"
+                      label="Not Contacted"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleColumns.has('bonus_pool_monthly') && (
+                    <SortableHeader
+                      field="bonus_pool_monthly"
+                      label="Bonus Pool"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
                     Issues
                   </th>
@@ -1915,7 +2090,11 @@ export default function DashboardClient() {
                         />
                       </td>
                       <td
-                        className="px-4 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                        className={clsx(
+                          'px-4 py-4 cursor-pointer hover:bg-slate-50 transition-colors left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]',
+                          index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                        )}
+                        style={{ position: 'sticky', left: '0' } as React.CSSProperties}
                         onClick={() => window.location.href = `/client/${client.client_code}`}
                       >
                         <div>
@@ -1930,78 +2109,113 @@ export default function DashboardClient() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <RAGStatus status={client.rag_status} />
-                      </td>
-                      {showEmailsSentColumn && (
+                      {visibleColumns.has('rag_status') && (
+                        <td className="px-4 py-4 text-center">
+                          <RAGStatus status={client.rag_status} />
+                        </td>
+                      )}
+                      {visibleColumns.has('contacted_7d') && (
                         <td className="px-4 py-4 text-right">
                           <div className="font-semibold text-slate-900 text-sm tabular-nums">
                             {formatNumber(client.contacted_7d)}
                           </div>
                         </td>
                       )}
-                      <td className="px-4 py-4 text-right">
-                        <div className="font-semibold text-slate-900 text-sm tabular-nums">
-                          {formatNumber(client.new_leads_reached_7d)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <TargetStatusBadge
-                          proratedTarget={client.prorated_target}
-                          newLeads={client.new_leads_reached_7d || 0}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="text-sm text-slate-700 tabular-nums">
-                          {formatNumber(client.replies_7d || 0)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <ReplyRateBadge
-                          value={client.reply_rate_7d}
-                          replies={client.replies_7d || 0}
-                          newLeads={client.new_leads_reached_7d || 0}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <BounceRateBadge
-                          value={client.bounce_pct_7d}
-                          bounces={client.bounces_7d || 0}
-                          contacted={client.contacted_7d || 0}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="text-sm text-slate-700 tabular-nums">
-                          {formatNumber(client.positives_7d || 0)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <PositiveReplyRateBadge
-                          value={client.positive_reply_rate_7d}
-                          positives={client.positives_7d || 0}
-                          replies={client.replies_7d || 0}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <PCPLBadge
-                          newLeads={newLeads}
-                          positives={positives}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <AttainmentBadge
-                          value={client.volume_attainment}
-                          weeklyTarget={client.weekly_target_int}
-                          newLeads={client.new_leads_reached_7d}
-                        />
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <Tooltip content="Leads with STARTED status (not yet contacted) from SmartLead API">
+                      {visibleColumns.has('new_leads_reached_7d') && (
+                        <td className="px-4 py-4 text-right">
                           <div className="font-semibold text-slate-900 text-sm tabular-nums">
-                            {formatNumber(client.not_contacted_leads || 0)}
+                            {formatNumber(client.new_leads_reached_7d)}
                           </div>
-                        </Tooltip>
-                      </td>
+                        </td>
+                      )}
+                      {visibleColumns.has('prorated_target') && (
+                        <td className="px-4 py-4 text-right">
+                          <TargetStatusBadge
+                            proratedTarget={client.prorated_target}
+                            newLeads={client.new_leads_reached_7d || 0}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('replies_7d') && (
+                        <td className="px-4 py-4 text-right">
+                          <div className="text-sm text-slate-700 tabular-nums">
+                            {formatNumber(client.replies_7d || 0)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.has('reply_rate_7d') && (
+                        <td className="px-4 py-4 text-right">
+                          <ReplyRateBadge
+                            value={client.reply_rate_7d}
+                            replies={client.replies_7d || 0}
+                            newLeads={client.new_leads_reached_7d || 0}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('bounce_pct_7d') && (
+                        <td className="px-4 py-4 text-right">
+                          <BounceRateBadge
+                            value={client.bounce_pct_7d}
+                            bounces={client.bounces_7d || 0}
+                            contacted={client.contacted_7d || 0}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('positives_7d') && (
+                        <td className="px-4 py-4 text-right">
+                          <div className="text-sm text-slate-700 tabular-nums">
+                            {formatNumber(client.positives_7d || 0)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.has('positive_reply_rate_7d') && (
+                        <td className="px-4 py-4 text-right">
+                          <PositiveReplyRateBadge
+                            value={client.positive_reply_rate_7d}
+                            positives={client.positives_7d || 0}
+                            replies={client.replies_7d || 0}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('pcpl') && (
+                        <td className="px-4 py-4 text-right">
+                          <PCPLBadge
+                            newLeads={newLeads}
+                            positives={positives}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('volume_attainment') && (
+                        <td className="px-4 py-4 text-right">
+                          <AttainmentBadge
+                            value={client.volume_attainment}
+                            weeklyTarget={client.weekly_target_int}
+                            newLeads={client.new_leads_reached_7d}
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.has('not_contacted_leads') && (
+                        <td className="px-4 py-4 text-right">
+                          <Tooltip content="Leads with STARTED status (not yet contacted) from SmartLead API">
+                            <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                              {formatNumber(client.not_contacted_leads || 0)}
+                            </div>
+                          </Tooltip>
+                        </td>
+                      )}
+                      {visibleColumns.has('bonus_pool_monthly') && (
+                        <td className="px-4 py-4 text-right">
+                          {client.bonus_pool_monthly !== null && client.bonus_pool_monthly !== undefined ? (
+                            <Tooltip content="Monthly bonus pool allocation">
+                              <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                                {formatNumber(client.bonus_pool_monthly)}
+                              </div>
+                            </Tooltip>
+                          ) : (
+                            <div className="text-sm text-slate-400 tabular-nums">—</div>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-4">
                         <IssuesFlags client={client} />
                       </td>

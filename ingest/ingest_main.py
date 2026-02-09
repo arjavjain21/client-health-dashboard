@@ -238,7 +238,8 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             assigned_account_manager_id, assigned_account_manager_name, assigned_account_manager_email,
             assigned_inbox_manager_id, assigned_inbox_manager_name, assigned_inbox_manager_email,
             assigned_sdr_id, assigned_sdr_name, assigned_sdr_email,
-            weekly_target, closelix, onboarding_activated, onboarding_date, exit_date
+            weekly_target, closelix, onboarding_activated, onboarding_date, exit_date,
+            bonus_pool_monthly
         FROM public.clients
     """
 
@@ -249,7 +250,9 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
     processed_rows = []
     for row in rows:
         weekly_target_int, weekly_target_missing = parse_weekly_target(row[17])
-        processed_rows.append(row + (weekly_target_int, weekly_target_missing))
+        # row[22] is bonus_pool_monthly (newly added)
+        bonus_pool_monthly = row[22] if len(row) > 22 else None
+        processed_rows.append(row[:22] + (weekly_target_int, weekly_target_missing, bonus_pool_monthly))
 
     # Upsert into local database
     upsert_query = """
@@ -260,9 +263,9 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             assigned_inbox_manager_id, assigned_inbox_manager_name, assigned_inbox_manager_email,
             assigned_sdr_id, assigned_sdr_name, assigned_sdr_email,
             weekly_target, closelix, onboarding_activated, onboarding_date, exit_date,
-            weekly_target_int, weekly_target_missing
+            weekly_target_int, weekly_target_missing, bonus_pool_monthly
         ) VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
         ON CONFLICT (client_id) DO UPDATE SET
             client_code = EXCLUDED.client_code,
@@ -288,6 +291,7 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             exit_date = EXCLUDED.exit_date,
             weekly_target_int = EXCLUDED.weekly_target_int,
             weekly_target_missing = EXCLUDED.weekly_target_missing,
+            bonus_pool_monthly = EXCLUDED.bonus_pool_monthly,
             updated_at = NOW()
     """
 
@@ -543,7 +547,18 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
     dashboard_query = """
         WITH metric_rags AS (
             SELECT
-                c.*,
+                c.client_id,
+                c.client_code,
+                c.client_name,
+                c.client_company_name,
+                c.relationship_status,
+                c.assigned_account_manager_name,
+                c.assigned_inbox_manager_name,
+                c.assigned_sdr_name,
+                c.weekly_target_int,
+                c.weekly_target_missing,
+                c.closelix,
+                c.bonus_pool_monthly,
                 COALESCE(r.contacted_7d, 0) as contacted_7d,
                 COALESCE(r.replies_7d, 0) as replies_7d,
                 COALESCE(r.positives_7d, 0) as positives_7d,
@@ -635,6 +650,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             relationship_status, assigned_account_manager_name,
             assigned_inbox_manager_name, assigned_sdr_name,
             weekly_target_int, weekly_target_missing, closelix,
+            bonus_pool_monthly,
             contacted_7d, replies_7d, positives_7d, bounces_7d,
             reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
             new_leads_reached_7d,
@@ -650,6 +666,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             m.relationship_status, m.assigned_account_manager_name,
             m.assigned_inbox_manager_name, m.assigned_sdr_name,
             m.weekly_target_int, m.weekly_target_missing, m.closelix,
+            m.bonus_pool_monthly,
             m.contacted_7d, m.replies_7d, m.positives_7d, m.bounces_7d,
             m.reply_rate_7d, m.positive_reply_rate_7d, m.bounce_pct_7d,
             m.new_leads_reached_7d,

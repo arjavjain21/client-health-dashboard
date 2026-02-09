@@ -117,7 +117,8 @@ export async function GET(request: NextRequest) {
         deliverability_flag, volume_flag, mmf_flag,
         data_missing_flag, data_stale_flag,
         rag_status, rag_reason,
-        most_recent_reporting_end_date, computed_at
+        most_recent_reporting_end_date, computed_at,
+        bonus_pool_monthly
       FROM client_health_dashboard_v1_local
       ${where}
       ORDER BY new_leads_reached_7d DESC NULLS LAST
