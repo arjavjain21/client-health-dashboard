@@ -178,11 +178,18 @@ def update_not_contacted_leads(local_db: LocalDatabase, not_contacted_map: dict)
     """
     Update not_contacted_leads column in dashboard table.
 
+    Only updates clients that have data in not_contacted_map.
+    Preserves existing values for clients not in the map to prevent data loss.
+
     Args:
         local_db: Local database connection
         not_contacted_map: Dict of {normalized_client_name: not_contacted_count}
     """
     logger.info("Updating not_contacted_leads in dashboard...")
+
+    if not not_contacted_map:
+        logger.warning("not_contacted_map is empty, preserving all existing values")
+        return
 
     try:
         # Get all clients from dashboard
@@ -193,6 +200,7 @@ def update_not_contacted_leads(local_db: LocalDatabase, not_contacted_map: dict)
         clients = local_db.execute_read(query)
 
         updated_count = 0
+        preserved_count = 0
         for client in clients:
             client_id = client[0]  # client_id (tuple index 0)
             client_code = client[1]  # client_code (tuple index 1)
@@ -205,18 +213,24 @@ def update_not_contacted_leads(local_db: LocalDatabase, not_contacted_map: dict)
             # Find not_contacted count (try client_name first, then client_code)
             not_contacted = not_contacted_map.get(normalized_name)
             if not_contacted is None:
-                not_contacted = not_contacted_map.get(normalized_code, 0)
+                not_contacted = not_contacted_map.get(normalized_code)
 
-            # Update this client
-            update_query = """
-                UPDATE client_health_dashboard_v1_local
-                SET not_contacted_leads = %s
-                WHERE client_id = %s
-            """
-            local_db.execute_write(update_query, (not_contacted, client_id))
-            updated_count += 1
+            # Only update if we found data for this client
+            # Otherwise preserve existing value (don't overwrite with 0)
+            if not_contacted is not None:
+                # Update this client with new data
+                update_query = """
+                    UPDATE client_health_dashboard_v1_local
+                    SET not_contacted_leads = %s
+                    WHERE client_id = %s
+                """
+                local_db.execute_write(update_query, (not_contacted, client_id))
+                updated_count += 1
+            else:
+                # Preserve existing value for this client
+                preserved_count += 1
 
-        logger.info(f"Updated not_contacted_leads for {updated_count} clients")
+        logger.info(f"Updated not_contacted_leads for {updated_count} clients, preserved existing values for {preserved_count} clients")
 
     except Exception as e:
         logger.error(f"Failed to update not_contacted_leads: {e}", exc_info=True)
