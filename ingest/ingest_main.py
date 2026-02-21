@@ -670,6 +670,94 @@ def compute_7d_rollups(local_db: LocalDatabase):
     return days_in_period
 
 
+def compute_historical_rollups(local_db: LocalDatabase):
+    """Compute and store rollups for last 4 completed Friday-Thursday weeks"""
+    logger.info("Computing historical rollups for last 4 completed weeks...")
+
+    # Get historical week definitions
+    historical_weeks = get_historical_weeks(num_weeks=4)
+
+    if not historical_weeks:
+        logger.warning("No historical weeks to compute")
+        return
+
+    for week_info in historical_weeks:
+        week_num = week_info['week_number']
+        start_date = week_info['start_date']
+        end_date = week_info['end_date']
+
+        logger.info(f"Computing historical week {week_num}: {start_date} to {end_date}")
+
+        # Check if this week already exists
+        existing_check = local_db.execute_read("""
+            SELECT COUNT(*) FROM client_7d_rollup_historical
+            WHERE period_start_date = %s
+        """, (start_date.isoformat(),))
+
+        if existing_check[0][0] > 0:
+            logger.info(f"  Week {week_num} already exists, skipping...")
+            continue
+
+        # Compute rollups for this week
+        rollup_query = """
+            INSERT INTO client_7d_rollup_historical (
+                client_id, client_code,
+                period_start_date, period_end_date, week_number,
+                contacted_7d, replies_7d, positives_7d, bounces_7d,
+                reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
+                new_leads_reached_7d,
+                most_recent_reporting_end_date
+            )
+            SELECT
+                m.client_id,
+                c.client_code,
+                %s as period_start_date,
+                %s as period_end_date,
+                %s as week_number,
+                COALESCE(SUM(cr.total_sent), 0) as contacted_7d,
+                COALESCE(SUM(cr.replies_count), 0) as replies_7d,
+                COALESCE(SUM(cr.positive_reply), 0) as positives_7d,
+                COALESCE(SUM(cr.bounce_count), 0) as bounces_7d,
+                CASE
+                    WHEN SUM(cr.new_leads_reached) > 0 THEN
+                        ROUND(SUM(cr.replies_count)::numeric / SUM(cr.new_leads_reached), 4)
+                    ELSE NULL
+                END as reply_rate_7d,
+                CASE
+                    WHEN SUM(cr.replies_count) > 0 THEN
+                        ROUND(SUM(cr.positive_reply)::numeric / SUM(cr.replies_count), 4)
+                    ELSE NULL
+                END as positive_reply_rate_7d,
+                CASE
+                    WHEN SUM(cr.total_sent) > 0 THEN
+                        ROUND(SUM(cr.bounce_count)::numeric / SUM(cr.total_sent), 4)
+                    ELSE NULL
+                END as bounce_pct_7d,
+                COALESCE(SUM(cr.new_leads_reached), 0) as new_leads_reached_7d,
+                MAX(cr.end_date) as most_recent_reporting_end_date
+            FROM clients_local c
+            INNER JOIN client_name_map_local m ON c.client_code = m.client_code
+            LEFT JOIN campaign_reporting_local cr
+                ON m.client_name_norm = cr.client_name_norm
+                AND cr.end_date >= %s
+                AND cr.end_date <= %s
+            GROUP BY m.client_id, c.client_code
+            ON CONFLICT (client_id, period_start_date) DO NOTHING
+        """
+
+        start_date_iso = start_date.isoformat()
+        end_date_iso = end_date.isoformat()
+
+        rowcount = local_db.execute_write(rollup_query, (
+            start_date_iso, end_date_iso, week_num,
+            start_date_iso, end_date_iso
+        ))
+
+        logger.info(f"  Inserted {rowcount} rollup rows for week {week_num}")
+
+    logger.info(f"Historical rollups complete: {len(historical_weeks)} weeks")
+
+
 def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
     """Build final dashboard dataset with all metrics, flags, and RAG status"""
     logger.info("Computing dashboard dataset...")
@@ -1133,6 +1221,9 @@ def main():
         build_client_mapping(local_db)
         days_in_period = compute_7d_rollups(local_db)
         compute_dashboard_dataset(local_db, days_in_period)
+
+        # Compute historical rollups for last 4 completed weeks
+        compute_historical_rollups(local_db)
 
         # Fetch and update not contacted leads from SmartLead API
         # Only run during scheduled cron jobs, not on manual refresh
