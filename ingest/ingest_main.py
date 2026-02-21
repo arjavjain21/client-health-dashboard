@@ -89,6 +89,63 @@ def get_friday_to_yesterday_range():
     return start_date, end_date
 
 
+def get_historical_weeks(num_weeks: int = 4) -> list:
+    """
+    Calculate last N completed Friday-Thursday weeks.
+
+    A "completed week" is a full Friday-Thursday period that ended before yesterday.
+    Week 1 = most recent completed week (last Friday to last Thursday)
+    Week 2 = previous completed week, etc.
+
+    Args:
+        num_weeks: Number of historical weeks to calculate (default: 4)
+
+    Returns:
+        List of dicts with keys: week_number, start_date, end_date (as date objects)
+    """
+    from datetime import datetime, timedelta
+
+    today = datetime.utcnow().date()
+    current_day = today.weekday()  # 0=Monday, ..., 4=Friday, 5=Saturday, 6=Sunday
+
+    # Find yesterday (the end of current incomplete week)
+    yesterday = today - timedelta(days=1)
+
+    # Start from yesterday and go back to find completed weeks
+    # Each completed week ends on Thursday, starts on Friday (7 days earlier)
+    weeks = []
+
+    # Start searching from yesterday
+    search_date = yesterday
+
+    for week_num in range(1, num_weeks + 1):
+        # Find the most recent Thursday on or before search_date
+        # Thursday = weekday 3
+        days_since_thursday = (search_date.weekday() - 3) % 7
+        most_recent_thursday = search_date - timedelta(days=days_since_thursday)
+
+        # Week starts on Friday (6 days before Thursday)
+        week_start = most_recent_thursday - timedelta(days=6)
+        week_end = most_recent_thursday
+
+        # If this week is the current incomplete week (contains yesterday but not full), skip it
+        if week_end >= yesterday:
+            # Move search_date to before this week and try again
+            search_date = week_start - timedelta(days=1)
+            continue
+
+        weeks.append({
+            'week_number': week_num,
+            'start_date': week_start,
+            'end_date': week_end
+        })
+
+        # Move search_date to before this week for next iteration
+        search_date = week_start - timedelta(days=1)
+
+    return weeks
+
+
 def count_sending_days(start_date: date, end_date: date, weekend_sending: bool) -> int:
     """
     Count the actual number of sending days in a date range.
@@ -294,7 +351,7 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             assigned_inbox_manager_id, assigned_inbox_manager_name, assigned_inbox_manager_email,
             assigned_sdr_id, assigned_sdr_name, assigned_sdr_email,
             weekly_target, closelix, onboarding_activated, onboarding_date, exit_date,
-            bonus_pool_monthly, weekend_sending_effective
+            bonus_pool_monthly, weekend_sending_effective, monthly_booking_goal
         FROM public.clients
     """
 
@@ -307,12 +364,14 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
         weekly_target_int, weekly_target_missing = parse_weekly_target(row[17])
         # row[22] is bonus_pool_monthly
         bonus_pool_monthly = row[22] if len(row) > 22 else None
-        # row[23] is weekend_sending_effective (NEW)
+        # row[23] is weekend_sending_effective
         weekend_sending_effective = row[23] if len(row) > 23 else False
         # Coerce to boolean if it's None
         if weekend_sending_effective is None:
             weekend_sending_effective = False
-        processed_rows.append(row[:22] + (weekly_target_int, weekly_target_missing, bonus_pool_monthly, weekend_sending_effective))
+        # row[24] is monthly_booking_goal (NEW)
+        monthly_booking_goal = row[24] if len(row) > 24 else None
+        processed_rows.append(row[:22] + (weekly_target_int, weekly_target_missing, bonus_pool_monthly, weekend_sending_effective, monthly_booking_goal))
 
     # Upsert into local database
     upsert_query = """
@@ -323,9 +382,10 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             assigned_inbox_manager_id, assigned_inbox_manager_name, assigned_inbox_manager_email,
             assigned_sdr_id, assigned_sdr_name, assigned_sdr_email,
             weekly_target, closelix, onboarding_activated, onboarding_date, exit_date,
-            weekly_target_int, weekly_target_missing, bonus_pool_monthly, weekend_sending_effective
+            weekly_target_int, weekly_target_missing, bonus_pool_monthly, weekend_sending_effective,
+            monthly_booking_goal
         ) VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
         )
         ON CONFLICT (client_id) DO UPDATE SET
             client_code = EXCLUDED.client_code,
@@ -353,6 +413,7 @@ def ingest_clients(supabase_clients: ReadOnlyConnection, local_db: LocalDatabase
             weekly_target_missing = EXCLUDED.weekly_target_missing,
             bonus_pool_monthly = EXCLUDED.bonus_pool_monthly,
             weekend_sending_effective = EXCLUDED.weekend_sending_effective,
+            monthly_booking_goal = EXCLUDED.monthly_booking_goal,
             updated_at = NOW()
     """
 
@@ -655,6 +716,7 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
                 c.weekly_target_missing,
                 c.closelix,
                 c.bonus_pool_monthly,
+                c.monthly_booking_goal,
                 COALESCE(r.contacted_7d, 0) as contacted_7d,
                 COALESCE(r.replies_7d, 0) as replies_7d,
                 COALESCE(r.positives_7d, 0) as positives_7d,
@@ -738,15 +800,17 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
                 -- Positive Reply Rate RAG (calculated as positives/replies)
                 CASE
                     WHEN r.replies_7d IS NULL OR r.replies_7d = 0 THEN NULL
-                    WHEN r.positives_7d IS NULL OR r.positives_7d = 0 THEN
-                        CASE WHEN r.reply_rate_7d >= 0.02 THEN 'Red' ELSE NULL END
+                    WHEN r.positives_7d = 0 THEN
+                        CASE WHEN r.replies_7d > 0 THEN 'Red' ELSE NULL END
+                    WHEN r.positives_7d IS NULL THEN NULL
                     WHEN (r.positives_7d::numeric / r.replies_7d) < 0.05 THEN 'Red'
                     WHEN (r.positives_7d::numeric / r.replies_7d) < 0.08 THEN 'Amber'
                     ELSE 'Green'
                 END as prr_rag,
                 -- PCPL RAG
                 CASE
-                    WHEN r.positives_7d IS NULL OR r.positives_7d = 0 THEN NULL
+                    WHEN r.positives_7d = 0 THEN 'Red'
+                    WHEN r.positives_7d IS NULL THEN NULL
                     WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / r.positives_7d > 800 THEN 'Red'
                     WHEN COALESCE(r.new_leads_reached_7d, 0)::numeric / r.positives_7d > 500 THEN 'Amber'
                     ELSE 'Green'
@@ -890,7 +954,9 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             data_missing_flag, data_stale_flag,
             rag_status, rag_reason,
             most_recent_reporting_end_date,
-            not_contacted_leads
+            not_contacted_leads,
+            weekend_sending_effective,
+            monthly_booking_goal
         )
         SELECT
             m.client_id, m.client_code, m.client_name, m.client_company_name,
@@ -907,7 +973,9 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             m.data_missing_flag, m.data_stale_flag,
             m.rag_status, NULL as rag_reason,  -- Will be updated later
             m.most_recent_reporting_end_date,
-            COALESCE(t.not_contacted_leads, 0) as not_contacted_leads
+            COALESCE(t.not_contacted_leads, 0) as not_contacted_leads,
+            COALESCE(m.weekend_sending_effective, FALSE) as weekend_sending_effective,
+            m.monthly_booking_goal
         FROM final_metrics m
         LEFT JOIN temp_preserved_not_contacted t ON m.client_id = t.client_id
     """
@@ -928,6 +996,8 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
         SET rag_reason = CASE
             WHEN data_missing_flag THEN
                 'Data missing: no contacted volume in last 7 days'
+            WHEN replies_7d > 0 AND positives_7d = 0 THEN
+                'Critical: zero positive replies from ' || replies_7d || ' replies (positive quality issue)'
             WHEN reply_rate_7d < 0.015 THEN
                 'Critical: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '% (below 1.5%)'
             WHEN bounce_pct_7d >= 0.04 THEN
