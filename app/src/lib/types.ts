@@ -35,6 +35,8 @@ export interface ClientRow {
   rag_reason: string | null;
   most_recent_reporting_end_date: string | null;
   bonus_pool_monthly: number | null;
+  weekend_sending_effective: boolean;
+  monthly_booking_goal: number | null;
   computed_at: string;
 }
 
@@ -97,6 +99,7 @@ export interface DashboardFilters {
   bounce_rate_range?: string;
   positive_reply_rate_range?: string;
   target_status?: 'below' | 'above';
+  weekend_sending_mode?: 'active' | 'inactive';
 }
 
 export interface FilterOptions {
@@ -104,4 +107,16 @@ export interface FilterOptions {
   account_managers: string[];
   inbox_managers: string[];
   sdrs: string[];
+}
+
+export interface HistoricalWeek {
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  display_name: string;
+  record_count: number;
+}
+
+export interface WeeksResponse {
+  weeks: HistoricalWeek[];
 }

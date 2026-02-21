@@ -151,6 +151,12 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     category: 'Financial',
     defaultVisible: true,  // Now visible with data from Supabase
   },
+  {
+    id: 'monthly_booking_goal',
+    label: 'Monthly Booking Goal',
+    category: 'Financial',
+    defaultVisible: true,
+  },
 ];
 
 // ============================================================================
@@ -962,7 +968,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly' | 'monthly_booking_goal';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -1065,6 +1071,9 @@ export default function DashboardClient() {
 
     const targetStatus = searchParams.get('target_status');
     if (targetStatus) urlFilters.target_status = targetStatus as 'below' | 'above';
+
+    const weekendSendingMode = searchParams.get('weekend_sending_mode');
+    if (weekendSendingMode) urlFilters.weekend_sending_mode = weekendSendingMode as 'active' | 'inactive';
 
     // Update filters from URL if any exist
     if (Object.keys(urlFilters).length > 0) {
@@ -1534,6 +1543,17 @@ export default function DashboardClient() {
                 onHideAll={handleHideAllColumns}
               />
               <Link
+                href="/historical-weeks"
+                className={clsx(
+                  'inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700',
+                  'bg-white hover:bg-slate-50 rounded-md border border-slate-300',
+                  'transition-all focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2'
+                )}
+                style={{ transition: tokens.transition }}
+              >
+                Historical Weeks
+              </Link>
+              <Link
                 href="/unmatched"
                 className={clsx(
                   'inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700',
@@ -1856,6 +1876,23 @@ export default function DashboardClient() {
                         'cursor-pointer'
                       )}
                       style={{ transition: tokens.transition }}
+                      value={filters.weekend_sending_mode || ''}
+                      onChange={(e) => setFilters({ ...filters, weekend_sending_mode: (e.target.value as 'active' | 'inactive' | '') || undefined })}
+                      aria-label="Filter by Weekend Sending"
+                    >
+                      <option value="">All Weekend</option>
+                      <option value="active">Weekend Sending</option>
+                      <option value="inactive">Weekday Only</option>
+                    </select>
+
+                    <select
+                      className={clsx(
+                        'px-4 py-2.5 text-xs font-medium text-slate-700',
+                        'bg-white border border-slate-300 rounded-md',
+                        'focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:border-slate-400',
+                        'cursor-pointer'
+                      )}
+                      style={{ transition: tokens.transition }}
                       value={filters.target_status || ''}
                       onChange={(e) => setFilters({ ...filters, target_status: (e.target.value as 'below' | 'above' | '') || undefined })}
                       aria-label="Filter by Target Status"
@@ -2051,6 +2088,16 @@ export default function DashboardClient() {
                       align="right"
                     />
                   )}
+                  {visibleColumns.has('monthly_booking_goal') && (
+                    <SortableHeader
+                      field="monthly_booking_goal"
+                      label="Monthly Booking Goal"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
+                  )}
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
                     Issues
                   </th>
@@ -2209,6 +2256,19 @@ export default function DashboardClient() {
                             <Tooltip content="Monthly bonus pool allocation">
                               <div className="font-semibold text-slate-900 text-sm tabular-nums">
                                 {formatNumber(client.bonus_pool_monthly)}
+                              </div>
+                            </Tooltip>
+                          ) : (
+                            <div className="text-sm text-slate-400 tabular-nums">—</div>
+                          )}
+                        </td>
+                      )}
+                      {visibleColumns.has('monthly_booking_goal') && (
+                        <td className="px-4 py-4 text-right">
+                          {client.monthly_booking_goal !== null && client.monthly_booking_goal !== undefined ? (
+                            <Tooltip content="Monthly booking goal from Supabase">
+                              <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                                {formatNumber(client.monthly_booking_goal)}
                               </div>
                             </Tooltip>
                           ) : (
