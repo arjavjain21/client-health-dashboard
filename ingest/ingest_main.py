@@ -793,7 +793,12 @@ def compute_historical_dashboard_dataset(local_db: LocalDatabase):
                 contacted_7d, replies_7d, positives_7d, bounces_7d,
                 reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
                 new_leads_reached_7d,
-                rag_status,
+                prorated_target,
+                volume_attainment, pcpl_proxy_7d,
+                not_contacted_leads,
+                deliverability_flag, volume_flag, mmf_flag,
+                data_missing_flag, data_stale_flag,
+                rag_status, rag_reason,
                 most_recent_reporting_end_date
             )
             SELECT
@@ -806,14 +811,23 @@ def compute_historical_dashboard_dataset(local_db: LocalDatabase):
                 r.contacted_7d, r.replies_7d, r.positives_7d, r.bounces_7d,
                 r.reply_rate_7d, r.positive_reply_rate_7d, r.bounce_pct_7d,
                 r.new_leads_reached_7d,
-                'Green'::text,  -- Placeholder, will compute RAG in Task 8
+                NULL::numeric(10,2),  -- prorated_target (will be computed later)
+                NULL::numeric(10,4),  -- volume_attainment (will be computed later)
+                NULL::numeric(10,4),  -- pcpl_proxy_7d (will be computed later)
+                0,  -- not_contacted_leads (default)
+                FALSE, FALSE, FALSE,  -- deliverability_flag, volume_flag, mmf_flag
+                FALSE, FALSE,  -- data_missing_flag, data_stale_flag
+                'Green'::text,  -- rag_status
+                'RAG computation pending - using default Green status'::text,  -- rag_reason
                 r.most_recent_reporting_end_date
             FROM clients_local c
             INNER JOIN client_name_map_local m ON c.client_code = m.client_code
             INNER JOIN client_7d_rollup_historical r
                 ON c.client_id = r.client_id
                 AND r.week_number = %s
-            WHERE c.relationship_status = 'ACTIVE'
+            WHERE EXISTS (
+                SELECT 1 FROM active_clients_v1 a WHERE a.client_id = c.client_id
+            )
             ON CONFLICT (client_id, period_start_date) DO NOTHING
         """
 
