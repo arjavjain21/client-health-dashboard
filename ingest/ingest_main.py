@@ -13,6 +13,7 @@ import re
 import logging
 import argparse
 from datetime import datetime, timedelta, date
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 from database import ReadOnlyConnection, LocalDatabase
 
@@ -89,7 +90,7 @@ def get_friday_to_yesterday_range():
     return start_date, end_date
 
 
-def get_historical_weeks(num_weeks: int = 4) -> list:
+def get_historical_weeks(num_weeks: int = 4) -> List[Dict[str, Any]]:
     """
     Calculate last N completed Friday-Thursday weeks.
 
@@ -103,10 +104,13 @@ def get_historical_weeks(num_weeks: int = 4) -> list:
     Returns:
         List of dicts with keys: week_number, start_date, end_date (as date objects)
     """
-    from datetime import datetime, timedelta
+    # Input validation
+    if num_weeks <= 0:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Requested {num_weeks} weeks, must be positive. Returning 4 weeks.")
+        return get_historical_weeks(4)  # Recursive call with default
 
     today = datetime.utcnow().date()
-    current_day = today.weekday()  # 0=Monday, ..., 4=Friday, 5=Saturday, 6=Sunday
 
     # Find yesterday (the end of current incomplete week)
     yesterday = today - timedelta(days=1)
@@ -142,6 +146,11 @@ def get_historical_weeks(num_weeks: int = 4) -> list:
 
         # Move search_date to before this week for next iteration
         search_date = week_start - timedelta(days=1)
+
+    # Warning for missing weeks
+    if len(weeks) < num_weeks:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Only found {len(weeks)} completed weeks, requested {num_weeks}")
 
     return weeks
 
