@@ -758,6 +758,74 @@ def compute_historical_rollups(local_db: LocalDatabase):
     logger.info(f"Historical rollups complete: {len(historical_weeks)} weeks")
 
 
+def compute_historical_dashboard_dataset(local_db: LocalDatabase):
+    """Compute dashboard dataset (with RAG) for each historical week"""
+    logger.info("Computing historical dashboard dataset with RAG...")
+
+    # Get all weeks that have rollup data but no dashboard data
+    weeks_to_compute = local_db.execute_read("""
+        SELECT DISTINCT week_number, period_start_date, period_end_date
+        FROM client_7d_rollup_historical
+        WHERE week_number NOT IN (
+            SELECT DISTINCT week_number
+            FROM client_health_dashboard_historical
+        )
+        ORDER BY week_number
+    """)
+
+    if not weeks_to_compute:
+        logger.info("No new historical weeks to compute dashboard for")
+        return
+
+    for week_num, start_date, end_date in weeks_to_compute:
+        logger.info(f"Computing dashboard for historical week {week_num}: {start_date} to {end_date}")
+
+        # Insert basic data without RAG (we'll compute RAG in Task 8)
+        # For now, use placeholder 'Green' status
+        basic_insert = """
+            INSERT INTO client_health_dashboard_historical (
+                client_id, client_code, client_name, client_company_name,
+                relationship_status, assigned_account_manager_name,
+                assigned_inbox_manager_name, assigned_sdr_name,
+                weekly_target_int, weekly_target_missing, closelix,
+                bonus_pool_monthly, weekend_sending_effective, monthly_booking_goal,
+                period_start_date, period_end_date, week_number,
+                contacted_7d, replies_7d, positives_7d, bounces_7d,
+                reply_rate_7d, positive_reply_rate_7d, bounce_pct_7d,
+                new_leads_reached_7d,
+                rag_status,
+                most_recent_reporting_end_date
+            )
+            SELECT
+                c.client_id, c.client_code, c.client_name, c.client_company_name,
+                c.relationship_status, c.assigned_account_manager_name,
+                c.assigned_inbox_manager_name, c.assigned_sdr_name,
+                c.weekly_target_int, c.weekly_target_missing, c.closelix,
+                c.bonus_pool_monthly, c.weekend_sending_effective, c.monthly_booking_goal,
+                %s, %s, %s,
+                r.contacted_7d, r.replies_7d, r.positives_7d, r.bounces_7d,
+                r.reply_rate_7d, r.positive_reply_rate_7d, r.bounce_pct_7d,
+                r.new_leads_reached_7d,
+                'Green'::text,  -- Placeholder, will compute RAG in Task 8
+                r.most_recent_reporting_end_date
+            FROM clients_local c
+            INNER JOIN client_name_map_local m ON c.client_code = m.client_code
+            INNER JOIN client_7d_rollup_historical r
+                ON c.client_id = r.client_id
+                AND r.week_number = %s
+            WHERE c.relationship_status = 'ACTIVE'
+            ON CONFLICT (client_id, period_start_date) DO NOTHING
+        """
+
+        rowcount = local_db.execute_write(basic_insert, (
+            start_date, end_date, week_num, week_num
+        ))
+
+        logger.info(f"  Inserted {rowcount} dashboard rows for week {week_num}")
+
+    logger.info("Historical dashboard dataset computation complete")
+
+
 def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
     """Build final dashboard dataset with all metrics, flags, and RAG status"""
     logger.info("Computing dashboard dataset...")
@@ -1224,6 +1292,7 @@ def main():
 
         # Compute historical rollups for last 4 completed weeks
         compute_historical_rollups(local_db)
+        compute_historical_dashboard_dataset(local_db)
 
         # Fetch and update not contacted leads from SmartLead API
         # Only run during scheduled cron jobs, not on manual refresh
