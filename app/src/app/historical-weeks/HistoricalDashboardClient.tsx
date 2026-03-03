@@ -986,6 +986,7 @@ export default function HistoricalDashboardClient() {
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aggregationInfo, setAggregationInfo] = useState<HistoricalDataResponse['aggregation_info'] | null>(null);
+  const [isMTDMode, setIsMTDMode] = useState(false);
 
   const [sortField, setSortField] = useState<SortField>('new_leads_reached_7d');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -1028,9 +1029,10 @@ export default function HistoricalDashboardClient() {
     }
   }, [visibleColumns]);
 
-  // Handle week selection change
+  // Handle week selection change and MTD mode
   useEffect(() => {
-    if (selectedWeeks.size === 0) {
+    // Clear data if no selection and not in MTD mode
+    if (selectedWeeks.size === 0 && !isMTDMode) {
       setClients([]);
       setAggregationInfo(null);
       return;
@@ -1039,6 +1041,24 @@ export default function HistoricalDashboardClient() {
     setLoadingData(true);
     setError(null);
 
+    // MTD mode: fetch from MTD endpoint
+    if (isMTDMode) {
+      fetch('/api/dashboard/historical/mtd')
+        .then(res => res.json())
+        .then((data: HistoricalDataResponse) => {
+          setClients(data.data);
+          setAggregationInfo(data.aggregation_info);
+          setLoadingData(false);
+        })
+        .catch(err => {
+          console.error('Failed to fetch MTD data:', err);
+          setError('Failed to load MTD data');
+          setLoadingData(false);
+        });
+      return;
+    }
+
+    // Week selection mode: fetch from historical endpoint
     const weeksParam = Array.from(selectedWeeks).sort((a, b) => a - b).join(',');
     fetch(`/api/dashboard/historical?weeks=${weeksParam}`)
       .then(res => res.json())
@@ -1052,9 +1072,10 @@ export default function HistoricalDashboardClient() {
         setError('Failed to load historical data');
         setLoadingData(false);
       });
-  }, [selectedWeeks]);
+  }, [selectedWeeks, isMTDMode]);
 
   const handleWeekToggle = (weekNumber: number) => {
+    setIsMTDMode(false); // Exit MTD mode when selecting weeks
     setSelectedWeeks(prev => {
       const newSet = new Set(prev);
       if (newSet.has(weekNumber)) {
@@ -1068,6 +1089,14 @@ export default function HistoricalDashboardClient() {
 
   const handleClearSelection = () => {
     setSelectedWeeks(new Set());
+  };
+
+  const handleMTDToggle = () => {
+    setIsMTDMode(prev => !prev);
+    if (!isMTDMode) {
+      // Switching to MTD mode: clear week selection
+      setSelectedWeeks(new Set());
+    }
   };
 
   const handleSort = useCallback((field: SortField) => {
@@ -1298,6 +1327,18 @@ export default function HistoricalDashboardClient() {
               onClearSelection={handleClearSelection}
               loading={loadingWeeks}
             />
+            <button
+              onClick={handleMTDToggle}
+              className={clsx(
+                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border transition-all',
+                isMTDMode
+                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              )}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              Month to Date
+            </button>
             {aggregationInfo && (
               <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-md">
                 <CalendarIcon className="w-4 h-4 text-blue-700" />
@@ -1330,15 +1371,15 @@ export default function HistoricalDashboardClient() {
       )}
 
       {/* Empty State */}
-      {!loadingData && !error && selectedWeeks.size === 0 && (
+      {!loadingData && !error && selectedWeeks.size === 0 && !isMTDMode && (
         <div className="max-w-[1800px] mx-auto px-6 py-12">
           <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
             <CalendarIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">Select Historical Weeks</h2>
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Select Historical Weeks or View Month to Date</h2>
             <p className="text-sm text-slate-500 mb-4">
               {weeks.length === 0
                 ? 'No historical data available yet.'
-                : `Choose from ${weeks.length} available week${weeks.length !== 1 ? 's' : ''} to view aggregated client health data.`}
+                : `Choose from ${weeks.length} available week${weeks.length !== 1 ? 's' : ''} to view aggregated client health data, or click "Month to Date" to see current month performance.`}
             </p>
             {weeks.length > 0 && (
               <p className="text-xs text-slate-400">
@@ -1350,7 +1391,7 @@ export default function HistoricalDashboardClient() {
       )}
 
       {/* Dashboard Content */}
-      {!loadingData && !error && selectedWeeks.size > 0 && (
+      {!loadingData && !error && (selectedWeeks.size > 0 || isMTDMode) && (
         <>
           {/* KPI CARD */}
           <div className="max-w-[1800px] mx-auto px-6 py-6">

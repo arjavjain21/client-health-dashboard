@@ -75,13 +75,13 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
   {
     id: 'contacted_7d',
-    label: 'Emails Sent (7d)',
+    label: 'Emails Sent',
     category: 'Health & Status',
     defaultVisible: false,
   },
   {
     id: 'new_leads_reached_7d',
-    label: 'New Leads (7d)',
+    label: 'New Leads',
     category: 'Health & Status',
     defaultVisible: true,
   },
@@ -95,7 +95,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
   {
     id: 'replies_7d',
-    label: 'Replies (7d)',
+    label: 'Replies',
     category: 'Performance Metrics',
     defaultVisible: true,
   },
@@ -113,7 +113,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   },
   {
     id: 'positives_7d',
-    label: 'Positive Replies (7d)',
+    label: 'Positive Replies',
     category: 'Performance Metrics',
     defaultVisible: true,
   },
@@ -1405,13 +1405,13 @@ export default function DashboardClient() {
       'Client Company',
       'Status',
       'RAG Status',
-      'New Leads (7d)',
-      'Emails Sent (7d)',
-      'Replies (7d)',
-      'Reply Rate (7d)',
-      'Positive Replies (7d)',
-      'Positive Rate (7d)',
-      'Positives (7d)',
+      'New Leads',
+      'Emails Sent',
+      'Replies',
+      'Reply Rate',
+      'Positive Replies',
+      'Positive Rate',
+      'Positives',
       'PCPL',
       'Target',
       'Volume Attainment',
@@ -1971,7 +1971,7 @@ export default function DashboardClient() {
                   {visibleColumns.has('contacted_7d') && (
                     <SortableHeader
                       field="contacted_7d"
-                      label="Emails Sent (7d)"
+                      label="Emails Sent"
                       sortField={sortField}
                       sortOrder={sortOrder}
                       onSort={handleSort}
@@ -1981,7 +1981,7 @@ export default function DashboardClient() {
                   {visibleColumns.has('new_leads_reached_7d') && (
                     <SortableHeader
                       field="new_leads_reached_7d"
-                      label="New Leads (7d)"
+                      label="New Leads"
                       sortField={sortField}
                       sortOrder={sortOrder}
                       onSort={handleSort}
@@ -2001,7 +2001,7 @@ export default function DashboardClient() {
                   {visibleColumns.has('replies_7d') && (
                     <SortableHeader
                       field="replies_7d"
-                      label="Replies (7d)"
+                      label="Replies"
                       sortField={sortField}
                       sortOrder={sortOrder}
                       onSort={handleSort}
@@ -2031,7 +2031,7 @@ export default function DashboardClient() {
                   {visibleColumns.has('positives_7d') && (
                     <SortableHeader
                       field="positives_7d"
-                      label="Positive Replies (7d)"
+                      label="Positive Replies"
                       sortField={sortField}
                       sortOrder={sortOrder}
                       onSort={handleSort}

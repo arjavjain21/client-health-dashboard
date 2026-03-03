@@ -331,8 +331,8 @@ export default function ClientDetailPage() {
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Campaign sorting state
-  const [campaignSortField, setCampaignSortField] = useState<CampaignSortField>('total_sent');
+  // Campaign sorting state - default sort by New Leads
+  const [campaignSortField, setCampaignSortField] = useState<CampaignSortField>('new_leads_reached_7d');
   const [campaignSortOrder, setCampaignSortOrder] = useState<CampaignSortOrder>('desc');
 
   // Campaign filter: hide campaigns with 0 new leads
@@ -483,7 +483,7 @@ export default function ClientDetailPage() {
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
           <MetricCard label="Weekly Target" value={client.weekly_target_int ? client.weekly_target_int.toLocaleString() : 'N/A'} />
-          <MetricCard label="Contacted (7d)" value={client.contacted_7d?.toLocaleString() || 0} />
+          <MetricCard label="Contacted" value={client.contacted_7d?.toLocaleString() || 0} />
           <MetricCard label="Volume Attainment" value={client.volume_attainment ? `${(client.volume_attainment * 100).toFixed(1)}%` : 'N/A'} />
           <MetricCard label="Reply Rate" value={client.reply_rate_7d ? `${(client.reply_rate_7d * 100).toFixed(2)}%` : 'N/A'} />
           <MetricCard label="Bounce Rate" value={client.bounce_pct_7d ? `${(client.bounce_pct_7d * 100).toFixed(2)}%` : 'N/A'} />
@@ -511,7 +511,7 @@ export default function ClientDetailPage() {
         {/* Campaign Breakdown */}
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Campaign Breakdown (Last 7 Days)</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Campaign Breakdown</h2>
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"

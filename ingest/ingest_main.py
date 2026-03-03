@@ -681,6 +681,11 @@ def compute_historical_rollups(local_db: LocalDatabase):
         logger.warning("No historical weeks to compute")
         return
 
+    # Clear all existing historical rollup data to ensure weeks roll forward correctly
+    logger.info("Clearing existing historical rollup data...")
+    local_db.execute_write("DELETE FROM client_7d_rollup_historical")
+    logger.info("Cleared all historical rollups")
+
     for week_info in historical_weeks:
         week_num = week_info['week_number']
         start_date = week_info['start_date']
@@ -762,14 +767,15 @@ def compute_historical_dashboard_dataset(local_db: LocalDatabase):
     """Compute dashboard dataset (with RAG) for each historical week"""
     logger.info("Computing historical dashboard dataset with RAG...")
 
-    # Get all weeks that have rollup data but no dashboard data
+    # Clear old historical dashboard data to ensure weeks roll forward correctly
+    logger.info("Clearing existing historical dashboard data...")
+    local_db.execute_write("DELETE FROM client_health_dashboard_historical")
+    logger.info("Cleared all historical dashboard data")
+
+    # Get all weeks that have rollup data
     weeks_to_compute = local_db.execute_read("""
         SELECT DISTINCT week_number, period_start_date, period_end_date
         FROM client_7d_rollup_historical
-        WHERE week_number NOT IN (
-            SELECT DISTINCT week_number
-            FROM client_health_dashboard_historical
-        )
         ORDER BY week_number
     """)
 
@@ -1124,31 +1130,31 @@ def compute_historical_dashboard_dataset(local_db: LocalDatabase):
                 WHEN replies_7d > 0 AND positives_7d = 0 THEN
                     'Critical: zero positive replies from ' || replies_7d || ' replies (positive quality issue)'
                 WHEN reply_rate_7d < 0.015 THEN
-                    'Critical: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '% (below 1.5%)'
+                    'Critical: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%% (below 1.5%%)'
                 WHEN bounce_pct_7d >= 0.04 THEN
-                    'Critical: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '% (4% or higher)'
+                    'Critical: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '%% (4%% or higher)'
                 WHEN weekly_target_int IS NOT NULL AND weekly_target_int > 0
                     AND volume_attainment < 0.5 THEN
-                    'Critical: volume attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '% (below 50%)'
+                    'Critical: volume attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '%% (below 50%%)'
                 WHEN reply_rate_7d IS NOT NULL AND reply_rate_7d < 0.02
                     AND replies_7d > 0 AND positives_7d > 0
                     AND (positives_7d::numeric / replies_7d) < 0.05 THEN
-                    'Multiple issues: reply rate ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%, positive rate ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%'
+                    'Multiple issues: reply rate ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%%, positive rate ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%%'
                 WHEN volume_flag AND deliverability_flag THEN
                     'Multiple issues: volume and deliverability concerns'
                 WHEN volume_flag THEN
-                    'Volume below target: attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '%'
+                    'Volume below target: attainment is ' || ROUND((volume_attainment * 100)::numeric, 1) || '%%'
                 WHEN deliverability_flag THEN
                     CASE
                         WHEN reply_rate_7d < 0.02 THEN
-                            'Deliverability risk: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%'
+                            'Deliverability risk: reply rate is ' || ROUND((reply_rate_7d * 100)::numeric, 2) || '%%'
                         WHEN bounce_pct_7d >= 0.05 THEN
-                            'Deliverability risk: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '%'
+                            'Deliverability risk: bounce rate is ' || ROUND((bounce_pct_7d * 100)::numeric, 2) || '%%'
                         ELSE 'Deliverability risk: check reply and bounce rates'
                     END
                 WHEN replies_7d > 0 AND positives_7d > 0
                     AND (positives_7d::numeric / replies_7d) < 0.05 THEN
-                    'MMF risk: positive reply rate is ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%'
+                    'MMF risk: positive reply rate is ' || ROUND(((positives_7d::numeric / replies_7d) * 100)::numeric, 2) || '%%'
                 WHEN positives_7d > 0
                     AND (new_leads_reached_7d::numeric / positives_7d) > 800 THEN
                     'PCPL high: ' || ROUND((new_leads_reached_7d::numeric / positives_7d), 1) || ' leads per positive reply'
