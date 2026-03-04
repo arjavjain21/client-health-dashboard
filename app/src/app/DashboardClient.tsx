@@ -157,6 +157,14 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     category: 'Financial',
     defaultVisible: true,
   },
+
+  // Bookings
+  {
+    id: 'bookings',
+    label: 'Bookings (7d)',
+    category: 'Bookings',
+    defaultVisible: true,
+  },
 ];
 
 // ============================================================================
@@ -968,7 +976,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly' | 'monthly_booking_goal';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly' | 'monthly_booking_goal' | 'total_booked_7d';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -2098,6 +2106,11 @@ export default function DashboardClient() {
                       align="right"
                     />
                   )}
+                  {visibleColumns.has('bookings') && (
+                    <th className="px-4 py-3.5 text-right font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
+                      Bookings (7d)
+                    </th>
+                  )}
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
                     Issues
                   </th>
@@ -2274,6 +2287,15 @@ export default function DashboardClient() {
                           ) : (
                             <div className="text-sm text-slate-400 tabular-nums">—</div>
                           )}
+                        </td>
+                      )}
+                      {visibleColumns.has('bookings') && (
+                        <td className="px-4 py-4 text-right">
+                          <Tooltip content="Qualified / Showed / Total Booked (7-day window)">
+                            <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                              {formatNumber(client.qualified_7d || 0)} / {formatNumber(client.showed_7d || 0)} / {formatNumber(client.total_booked_7d || 0)}
+                            </div>
+                          </Tooltip>
                         </td>
                       )}
                       <td className="px-4 py-4">

@@ -37,6 +37,9 @@ export interface ClientRow {
   bonus_pool_monthly: number | null;
   weekend_sending_effective: boolean;
   monthly_booking_goal: number | null;
+  qualified_7d: number;
+  showed_7d: number;
+  total_booked_7d: number;
   computed_at: string;
 }
 
