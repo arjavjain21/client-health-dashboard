@@ -161,7 +161,7 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   // Bookings
   {
     id: 'bookings',
-    label: 'Bookings (7d)',
+    label: 'Q/S/TB',
     category: 'Bookings',
     defaultVisible: true,
   },
@@ -2108,7 +2108,7 @@ export default function DashboardClient() {
                   )}
                   {visibleColumns.has('bookings') && (
                     <th className="px-4 py-3.5 text-right font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
-                      Bookings (7d)
+                      Q/S/TB
                     </th>
                   )}
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
@@ -2291,7 +2291,7 @@ export default function DashboardClient() {
                       )}
                       {visibleColumns.has('bookings') && (
                         <td className="px-4 py-4 text-right">
-                          <Tooltip content="Qualified / Showed / Total Booked (7-day window)">
+                          <Tooltip content="Qualified / Showed / Total Booked">
                             <div className="font-semibold text-slate-900 text-sm tabular-nums">
                               {formatNumber(client.qualified_7d || 0)} / {formatNumber(client.showed_7d || 0)} / {formatNumber(client.total_booked_7d || 0)}
                             </div>

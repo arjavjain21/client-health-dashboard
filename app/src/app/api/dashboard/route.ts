@@ -118,7 +118,12 @@ export async function GET(request: NextRequest) {
         data_missing_flag, data_stale_flag,
         rag_status, rag_reason,
         most_recent_reporting_end_date, computed_at,
-        bonus_pool_monthly
+        bonus_pool_monthly,
+        weekend_sending_effective,
+        monthly_booking_goal,
+        qualified_7d,
+        showed_7d,
+        total_booked_7d
       FROM client_health_dashboard_v1_local
       ${where}
       ORDER BY new_leads_reached_7d DESC NULLS LAST

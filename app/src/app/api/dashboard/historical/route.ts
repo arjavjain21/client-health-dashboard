@@ -92,6 +92,7 @@ function buildSingleWeekQuery(weekNumber: number): string {
       rag_status, rag_reason,
       most_recent_reporting_end_date, computed_at,
       bonus_pool_monthly, weekend_sending_effective, monthly_booking_goal,
+      qualified_7d, showed_7d, total_booked_7d,
       period_start_date, period_end_date, week_number
     FROM client_health_dashboard_historical
     WHERE week_number = $1
@@ -116,6 +117,9 @@ function buildMultiWeekQuery(weekNumbers: number[]): string {
       SUM(bounces_7d) as bounces_7d,
       SUM(new_leads_reached_7d) as new_leads_reached_7d,
       SUM(not_contacted_leads) as not_contacted_leads,
+      SUM(qualified_7d) as qualified_7d,
+      SUM(showed_7d) as showed_7d,
+      SUM(total_booked_7d) as total_booked_7d,
 
       -- Average percentages
       AVG(reply_rate_7d) as reply_rate_7d,
@@ -240,6 +244,9 @@ function transformToHistoricalRow(
     bonus_pool_monthly: row.bonus_pool_monthly ? parseFloat(row.bonus_pool_monthly) : null,
     weekend_sending_effective: row.weekend_sending_effective ?? false,
     monthly_booking_goal: row.monthly_booking_goal ? parseFloat(row.monthly_booking_goal) : null,
+    qualified_7d: Number(row.qualified_7d ?? 0),
+    showed_7d: Number(row.showed_7d ?? 0),
+    total_booked_7d: Number(row.total_booked_7d ?? 0),
     computed_at: row.computed_at,
     selected_weeks: selectedWeeks,
     aggregation_days: aggregationDays,
