@@ -1,0 +1,3 @@
+ERROR:  syntax error at or near "table"
+LINE 1: GRANT SELECT ON interested_leads table to client_health_dash...
+                                         ^

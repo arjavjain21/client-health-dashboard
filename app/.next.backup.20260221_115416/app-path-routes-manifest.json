@@ -1,0 +1,19 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/dashboard/[client_code]/route": "/api/dashboard/[client_code]",
+  "/api/dashboard/filters/route": "/api/dashboard/filters",
+  "/api/dashboard/historical/route": "/api/dashboard/historical",
+  "/api/dashboard/refresh/route": "/api/dashboard/refresh",
+  "/api/dashboard/route": "/api/dashboard",
+  "/api/dashboard/unmatched/route": "/api/dashboard/unmatched",
+  "/api/health/route": "/api/health",
+  "/api/refresh/route": "/api/refresh",
+  "/api/weeks/route": "/api/weeks",
+  "/client/[client_code]/page": "/client/[client_code]",
+  "/favicon.ico/route": "/favicon.ico",
+  "/historical-weeks/page": "/historical-weeks",
+  "/icon.svg/route": "/icon.svg",
+  "/page": "/",
+  "/unmatched/page": "/unmatched"
+}

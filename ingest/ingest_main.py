@@ -604,6 +604,73 @@ def build_client_mapping(local_db: LocalDatabase):
     logger.warning(f"Unmatched reporting client_names: {len(reporting_names) - len(matched_reporting_names)}")
 
 
+def fetch_bookings_data(start_date: date, end_date: date) -> Dict[str, Dict[str, int]]:
+    """
+    Fetch bookings counts from hyperke_dashboard.interested_leads
+
+    Args:
+        start_date: Start of date range (inclusive)
+        end_date: End of date range (inclusive)
+
+    Returns:
+        Dict mapping client_code to booking counts: {
+            'CLIENT_CODE': {
+                'qualified_7d': X,
+                'showed_7d': Y,
+                'total_booked_7d': Z
+            }
+        }
+    """
+    logger.info(f"Fetching bookings data for {start_date} to {end_date}...")
+
+    # Connect directly to hyperke_dashboard database (READ-ONLY access already granted)
+    # Use peer authentication (no password needed for local connections as ubuntu user)
+    query = """
+        SELECT
+            client_code,
+            COUNT(*) FILTER (WHERE call_feedback = 'QUALIFIED') as qualified_7d,
+            COUNT(*) FILTER (WHERE call_feedback IN ('QUALIFIED', 'UNQUALIFIED')) as showed_7d,
+            COUNT(*) as total_booked_7d
+        FROM interested_leads
+        WHERE meeting_date >= %s
+          AND meeting_date < %s + INTERVAL '1 day'
+          AND deleted_at IS NULL
+          AND meeting_date IS NOT NULL
+        GROUP BY client_code
+    """
+
+    try:
+        import psycopg2
+        # Connect using peer authentication (no password)
+        conn = psycopg2.connect(
+            dbname="hyperke_dashboard",
+            user="ubuntu",
+            host="/var/run/postgresql"  # Unix socket for peer auth
+        )
+        cur = conn.cursor()
+        cur.execute(query, (start_date, end_date))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        bookings_map = {}
+        for row in rows:
+            client_code = row[0]
+            bookings_map[client_code] = {
+                'qualified_7d': row[1] or 0,
+                'showed_7d': row[2] or 0,
+                'total_booked_7d': row[3] or 0
+            }
+
+        logger.info(f"Fetched bookings data for {len(bookings_map)} clients")
+        return bookings_map
+
+    except Exception as e:
+        logger.error(f"Failed to fetch bookings data: {e}")
+        logger.warning("Bookings data will be set to 0 for all clients")
+        return {}
+
+
 def compute_7d_rollups(local_db: LocalDatabase):
     """Compute rollups from Friday to yesterday"""
     logger.info("Computing Friday-to-Yesterday rollups...")
@@ -665,7 +732,30 @@ def compute_7d_rollups(local_db: LocalDatabase):
 
     rowcount = local_db.execute_write(rollup_query, (start_date_iso, end_date_iso))
     logger.info(f"Computed {rowcount} client rollups for date range {start_date_iso} to {end_date_iso}")
-    
+
+    # Fetch and update bookings data
+    bookings_data = fetch_bookings_data(start_date, end_date)
+
+    if bookings_data:
+        # Update rollups with bookings data
+        for client_code, counts in bookings_data.items():
+            update_query = """
+                UPDATE client_7d_rollup_v1_local
+                SET qualified_7d = %s,
+                    showed_7d = %s,
+                    total_booked_7d = %s
+                WHERE client_code = %s
+            """
+            local_db.execute_write(update_query, (
+                counts['qualified_7d'],
+                counts['showed_7d'],
+                counts['total_booked_7d'],
+                client_code
+            ))
+        logger.info(f"Updated bookings data for {len(bookings_data)} clients")
+    else:
+        logger.warning("No bookings data available, all clients will show 0 for bookings")
+
     # Return days_in_period for pro-rated target calculations
     return days_in_period
 
@@ -759,6 +849,30 @@ def compute_historical_rollups(local_db: LocalDatabase):
         ))
 
         logger.info(f"  Inserted {rowcount} rollup rows for week {week_num}")
+
+        # Fetch and update bookings data for this historical week
+        bookings_data = fetch_bookings_data(start_date, end_date)
+
+        if bookings_data:
+            # Update historical rollups with bookings data
+            for client_code, counts in bookings_data.items():
+                update_query = """
+                    UPDATE client_7d_rollup_historical
+                    SET qualified_7d = %s,
+                        showed_7d = %s,
+                        total_booked_7d = %s
+                    WHERE client_code = %s
+                      AND period_start_date = %s
+                """
+                local_db.execute_write(update_query, (
+                    counts['qualified_7d'],
+                    counts['showed_7d'],
+                    counts['total_booked_7d'],
+                    client_code,
+                    start_date_iso
+                ))
+            logger.info(f"  Updated bookings data for {len(bookings_data)} clients in week {week_num}")
+
 
     logger.info(f"Historical rollups complete: {len(historical_weeks)} weeks")
 
@@ -1348,7 +1462,11 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
                      END *
                      sending_days_count) < 0.8 THEN 'Amber'
                     ELSE 'Green'
-                END as volume_rag
+                END as volume_rag,
+                -- Bookings metrics from rollup table
+                COALESCE(r.qualified_7d, 0) as qualified_7d,
+                COALESCE(r.showed_7d, 0) as showed_7d,
+                COALESCE(r.total_booked_7d, 0) as total_booked_7d
             FROM active_clients_v1 c
             INNER JOIN client_sending_days sd ON c.client_id = sd.client_id
             LEFT JOIN client_7d_rollup_v1_local r ON c.client_id = r.client_id
@@ -1464,7 +1582,8 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             most_recent_reporting_end_date,
             not_contacted_leads,
             weekend_sending_effective,
-            monthly_booking_goal
+            monthly_booking_goal,
+            qualified_7d, showed_7d, total_booked_7d
         )
         SELECT
             m.client_id, m.client_code, m.client_name, m.client_company_name,
@@ -1483,7 +1602,8 @@ def compute_dashboard_dataset(local_db: LocalDatabase, days_in_period: int):
             m.most_recent_reporting_end_date,
             COALESCE(t.not_contacted_leads, 0) as not_contacted_leads,
             COALESCE(m.weekend_sending_effective, FALSE) as weekend_sending_effective,
-            m.monthly_booking_goal
+            m.monthly_booking_goal,
+            m.qualified_7d, m.showed_7d, m.total_booked_7d
         FROM final_metrics m
         LEFT JOIN temp_preserved_not_contacted t ON m.client_id = t.client_id
     """

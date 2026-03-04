@@ -1,0 +1,7 @@
+{
+  "/api/dashboard/historical/route": "app/api/dashboard/historical/route.js",
+  "/api/dashboard/route": "app/api/dashboard/route.js",
+  "/api/weeks/route": "app/api/weeks/route.js",
+  "/historical-weeks/page": "app/historical-weeks/page.js",
+  "/page": "app/page.js"
+}

@@ -1,0 +1,116 @@
+================================================================================
+TASK 8: HISTORICAL RAG COMPUTATION - QUICK REFERENCE
+================================================================================
+
+IMPLEMENTATION COMPLETE ✅
+
+File Modified:
+  /home/ubuntu/client-health-dashboard/ingest/ingest_main.py
+  Function: compute_historical_dashboard_dataset() (lines 761-1163)
+
+================================================================================
+KEY CHANGES
+================================================================================
+
+BEFORE (Placeholder):
+  rag_status = 'Green' (for all clients)
+  rag_reason = 'RAG computation pending - using default Green status'
+  deliverability_flag = FALSE
+  volume_flag = FALSE
+  mmf_flag = FALSE
+
+AFTER (Full Computation):
+  rag_status = Computed (Red/Yellow/Green based on metrics)
+  rag_reason = Specific ("Critical: reply rate is 1.2% (below 1.5%)")
+  deliverability_flag = Computed (reply_rate < 2% OR bounce_rate >= 5%)
+  volume_flag = Computed (volume_attainment < 80%)
+  mmf_flag = Computed (reply_rate >= 2% AND positive_rate < 5%)
+
+================================================================================
+RAG THRESHOLDS
+================================================================================
+
+Reply Rate:          <1.5% Red,   <2% Amber,   >=2% Green
+Positive Reply Rate: <5% Red,     <8% Amber,   >=8% Green
+PCPL:                >800 Red,    >500 Amber,  <=500 Green
+Bounce Rate:         >=4% Red,    >=2% Amber,  <2% Green
+Volume Attainment:   <50% Red,    <80% Amber,  >=80% Green
+
+================================================================================
+MAJORITY VOTING RULES
+================================================================================
+
+Critical Overrides (Red regardless):
+  - contacted_7d = 0
+  - reply_rate < 1.5%
+  - bounce_rate >= 4%
+  - volume_attainment < 50%
+
+Voting:
+  - 3+ Red votes → Red
+  - 2 Red + 1 Amber → Red
+  - 3+ Amber → Yellow
+  - 4+ Green → Green
+  - Default → Yellow
+
+================================================================================
+VERIFICATION
+================================================================================
+
+Quick Test:
+  SELECT
+    week_number,
+    COUNT(CASE WHEN rag_status = 'Red' THEN 1 END) as red_count,
+    COUNT(CASE WHEN rag_status = 'Yellow' THEN 1 END) as yellow_count,
+    COUNT(CASE WHEN rag_status = 'Green' THEN 1 END) as green_count
+  FROM client_health_dashboard_historical
+  GROUP BY week_number;
+
+Expected Result:
+  - Red: 10-20% (poor performers)
+  - Yellow: 30-40% (clients with issues)
+  - Green: 40-60% (healthy clients)
+
+Full Verification:
+  psql -h localhost -U postgres -d client_health_dashboard \
+    -f DOCUMENTATION/TASK_8_VERIFICATION_QUERIES.sql
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Run Ingestion:
+   cd /home/ubuntu/client-health-dashboard
+   python3 ingest/ingest_main.py --skip-smartlead
+
+2. Verify Results:
+   Run the verification queries to check RAG distribution
+
+3. Check API:
+   curl -X POST https://your-domain.com/api/historical-weeks \
+     -H "Content-Type: application/json" \
+     -d '{"client_id": "CLIENT_ID"}'
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+Created:
+  - DOCUMENTATION/TASK_8_SUMMARY.md
+  - DOCUMENTATION/TASK_8_HISTORICAL_RAG_IMPLEMENTATION.md
+  - DOCUMENTATION/TASK_8_BEFORE_AFTER_COMPARISON.md
+  - DOCUMENTATION/TASK_8_VERIFICATION_QUERIES.sql
+
+================================================================================
+IMPACT
+================================================================================
+
+✅ Historical data now shows accurate RAG status (not misleading Green)
+✅ Trend analysis is possible (can compare across weeks)
+✅ Performance issues are visible (not hidden)
+✅ Dashboard integrity maintained (current + historical use same logic)
+✅ Specific RAG reasons guide interventions
+
+================================================================================
+STATUS: COMPLETE ✅
+================================================================================

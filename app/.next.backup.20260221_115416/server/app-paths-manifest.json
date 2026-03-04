@@ -1,0 +1,19 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/dashboard/[client_code]/route": "app/api/dashboard/[client_code]/route.js",
+  "/api/dashboard/filters/route": "app/api/dashboard/filters/route.js",
+  "/api/dashboard/historical/route": "app/api/dashboard/historical/route.js",
+  "/api/dashboard/refresh/route": "app/api/dashboard/refresh/route.js",
+  "/api/dashboard/route": "app/api/dashboard/route.js",
+  "/api/dashboard/unmatched/route": "app/api/dashboard/unmatched/route.js",
+  "/api/health/route": "app/api/health/route.js",
+  "/api/refresh/route": "app/api/refresh/route.js",
+  "/api/weeks/route": "app/api/weeks/route.js",
+  "/client/[client_code]/page": "app/client/[client_code]/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/historical-weeks/page": "app/historical-weeks/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/page": "app/page.js",
+  "/unmatched/page": "app/unmatched/page.js"
+}
