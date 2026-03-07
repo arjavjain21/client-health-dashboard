@@ -205,9 +205,9 @@ export async function GET(request: NextRequest) {
         t.bonus_pool_monthly,
         t.weekend_sending_effective,
         t.monthly_booking_goal,
-        COALESCE(cur.qualified_7d, 0) AS qualified_7d,
-        COALESCE(cur.showed_7d, 0) AS showed_7d,
-        COALESCE(cur.total_booked_7d, 0) AS total_booked_7d,
+        0 AS qualified_7d,
+        0 AS showed_7d,
+        0 AS total_booked_7d,
         (SELECT start_date FROM date_range) AS period_start_date,
         (SELECT end_date FROM date_range) AS period_end_date
       FROM with_rag t

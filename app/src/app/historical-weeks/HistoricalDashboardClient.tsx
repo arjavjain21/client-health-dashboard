@@ -118,6 +118,12 @@ const COLUMN_DEFINITIONS: ColumnDefinition[] = [
     defaultVisible: true,
   },
   {
+    id: 'bookings',
+    label: 'Q/S/TB',
+    category: 'Bookings',
+    defaultVisible: true,
+  },
+  {
     id: 'bonus_pool_monthly',
     label: 'Bonus Pool',
     category: 'Financial',
@@ -954,7 +960,7 @@ function KpiTileCompact({
 // MAIN HISTORICAL DASHBOARD COMPONENT
 // ============================================================================
 
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'bonus_pool_monthly' | 'monthly_booking_goal';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'total_booked_7d' | 'bonus_pool_monthly' | 'monthly_booking_goal';
 type SortOrder = 'asc' | 'desc' | null;
 
 interface HistoricalClientRow extends ClientRow {
@@ -1186,6 +1192,7 @@ export default function HistoricalDashboardClient() {
       'PCPL',
       'Target',
       'Volume Attainment',
+      'Q/S/TB',
       'Not Contacted',
       'Selected Weeks',
       'Aggregation Days',
@@ -1212,6 +1219,7 @@ export default function HistoricalDashboardClient() {
         pcpl,
         c.weekly_target_int || 'N/A',
         c.weekly_target_int ? ((c.new_leads_reached_7d || 0) / c.weekly_target_int * 100).toFixed(1) + '%' : 'N/A',
+        `${c.qualified_7d || 0} / ${c.showed_7d || 0} / ${c.total_booked_7d || 0}`,
         c.not_contacted_leads || 0,
         c.selected_weeks.join(','),
         c.aggregation_days,
@@ -1597,6 +1605,16 @@ export default function HistoricalDashboardClient() {
                           align="right"
                         />
                       )}
+                      {visibleColumns.has('bookings') && (
+                        <SortableHeader
+                          field="total_booked_7d"
+                          label="Q/S/TB"
+                          sortField={sortField}
+                          sortOrder={sortOrder}
+                          onSort={handleSort}
+                          align="right"
+                        />
+                      )}
                       {visibleColumns.has('bonus_pool_monthly') && (
                         <SortableHeader
                           field="bonus_pool_monthly"
@@ -1749,6 +1767,15 @@ export default function HistoricalDashboardClient() {
                                 weeklyTarget={client.weekly_target_int}
                                 newLeads={client.new_leads_reached_7d}
                               />
+                            </td>
+                          )}
+                          {visibleColumns.has('bookings') && (
+                            <td className="px-4 py-4 text-right">
+                              <Tooltip content="Qualified / Showed / Total Booked">
+                                <div className="font-semibold text-slate-900 text-sm tabular-nums">
+                                  {formatNumber(client.qualified_7d || 0)} / {formatNumber(client.showed_7d || 0)} / {formatNumber(client.total_booked_7d || 0)}
+                                </div>
+                              </Tooltip>
                             </td>
                           )}
                           {visibleColumns.has('bonus_pool_monthly') && (
