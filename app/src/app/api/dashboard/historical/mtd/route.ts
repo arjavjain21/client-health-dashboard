@@ -84,6 +84,19 @@ export async function GET(request: NextRequest) {
       WITH date_range AS (
         SELECT $1::date AS start_date, $2::date AS end_date
       ),
+      bookings AS (
+        SELECT
+          c.client_code,
+          COALESCE(SUM(h.qualified_7d), 0)::integer AS qualified_7d,
+          COALESCE(SUM(h.showed_7d), 0)::integer AS showed_7d,
+          COALESCE(SUM(h.total_booked_7d), 0)::integer AS total_booked_7d
+        FROM clients_local c
+        LEFT JOIN client_health_dashboard_historical h
+          ON c.client_id = h.client_id
+          AND h.period_start_date <= (SELECT end_date FROM date_range)
+          AND h.period_end_date >= (SELECT start_date FROM date_range)
+        GROUP BY c.client_code
+      ),
       rollup AS (
         SELECT
           m.client_id,
@@ -205,13 +218,14 @@ export async function GET(request: NextRequest) {
         t.bonus_pool_monthly,
         t.weekend_sending_effective,
         t.monthly_booking_goal,
-        0 AS qualified_7d,
-        0 AS showed_7d,
-        0 AS total_booked_7d,
+        COALESCE(b.qualified_7d, 0)::integer AS qualified_7d,
+        COALESCE(b.showed_7d, 0)::integer AS showed_7d,
+        COALESCE(b.total_booked_7d, 0)::integer AS total_booked_7d,
         (SELECT start_date FROM date_range) AS period_start_date,
         (SELECT end_date FROM date_range) AS period_end_date
       FROM with_rag t
       LEFT JOIN client_health_dashboard_v1_local cur ON cur.client_id = t.client_id
+      LEFT JOIN bookings b ON b.client_code = t.client_code
       ${ragWhere}
       ORDER BY t.new_leads_reached_7d DESC NULLS LAST
     `;
