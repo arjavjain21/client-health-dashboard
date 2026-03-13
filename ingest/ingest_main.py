@@ -1218,13 +1218,14 @@ def compute_historical_dashboard_dataset(local_db: LocalDatabase):
                 m.new_leads_reached_7d,
                 m.prorated_target,
                 m.volume_attainment, m.pcpl_proxy_7d,
-                0 as not_contacted_leads,
+                COALESCE(c.not_contacted_leads, 0) as not_contacted_leads,
                 m.qualified_7d, m.showed_7d, m.total_booked_7d,
                 m.deliverability_flag, m.volume_flag, m.mmf_flag,
                 m.data_missing_flag, m.data_stale_flag,
                 m.rag_status, NULL as rag_reason,
                 m.most_recent_reporting_end_date
             FROM final_metrics m
+            LEFT JOIN client_health_dashboard_v1_local c ON m.client_id = c.client_id
             ON CONFLICT (client_id, period_start_date) DO NOTHING
         """
 
@@ -1755,14 +1756,9 @@ def main():
             days_back=int(os.getenv('INGEST_DAYS_BACK', 30))
         )
         build_client_mapping(local_db)
-        days_in_period = compute_7d_rollups(local_db)
-        compute_dashboard_dataset(local_db, days_in_period)
-
-        # Compute historical rollups for last 4 completed weeks
-        compute_historical_rollups(local_db)
-        compute_historical_dashboard_dataset(local_db)
 
         # Fetch and update not contacted leads from SmartLead API
+        # Run FIRST to ensure both current and historical dashboards have the data
         # Only run during scheduled cron jobs, not on manual refresh
         if args.skip_smartlead:
             logger.info("Skipping SmartLead API call (manual refresh mode)")
@@ -1774,6 +1770,13 @@ def main():
                 update_not_contacted_leads(local_db, not_contacted_map)
             else:
                 logger.warning("No not_contacted data fetched from SmartLead, all clients will show 0")
+
+        days_in_period = compute_7d_rollups(local_db)
+        compute_dashboard_dataset(local_db, days_in_period)
+
+        # Compute historical rollups for last 4 completed weeks
+        compute_historical_rollups(local_db)
+        compute_historical_dashboard_dataset(local_db)
 
         track_unmatched_mappings(local_db)
 
