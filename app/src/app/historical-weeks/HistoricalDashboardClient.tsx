@@ -960,7 +960,7 @@ function KpiTileCompact({
 // MAIN HISTORICAL DASHBOARD COMPONENT
 // ============================================================================
 
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'total_booked_7d' | 'bonus_pool_monthly' | 'monthly_booking_goal';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'qualified_7d' | 'showed_7d' | 'total_booked_7d' | 'bonus_pool_monthly' | 'monthly_booking_goal';
 type SortOrder = 'asc' | 'desc' | null;
 
 interface HistoricalClientRow extends ClientRow {

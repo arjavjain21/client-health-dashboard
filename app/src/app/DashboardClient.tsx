@@ -976,7 +976,7 @@ function IssuesFlags({ client }: { client: ClientRow }) {
 // ============================================================================
 
 // Added all sortable fields
-type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly' | 'monthly_booking_goal' | 'total_booked_7d';
+type SortField = 'client_code' | 'rag_status' | 'new_leads_reached_7d' | 'prorated_target' | 'contacted_7d' | 'replies_7d' | 'reply_rate_7d' | 'bounce_pct_7d' | 'positives_7d' | 'positive_reply_rate_7d' | 'pcpl' | 'volume_attainment' | 'not_contacted_leads' | 'bonus_pool_monthly' | 'monthly_booking_goal' | 'qualified_7d' | 'showed_7d' | 'total_booked_7d';
 type SortOrder = 'asc' | 'desc' | null;
 
 export default function DashboardClient() {
@@ -2107,9 +2107,14 @@ export default function DashboardClient() {
                     />
                   )}
                   {visibleColumns.has('bookings') && (
-                    <th className="px-4 py-3.5 text-right font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
-                      Q/S/TB
-                    </th>
+                    <SortableHeader
+                      field="total_booked_7d"
+                      label="Q/S/TB"
+                      sortField={sortField}
+                      sortOrder={sortOrder}
+                      onSort={handleSort}
+                      align="right"
+                    />
                   )}
                   <th className="px-4 py-3.5 text-left font-semibold text-xs uppercase tracking-wide border-b-2 border-slate-200 text-slate-600 bg-slate-50/50 whitespace-nowrap">
                     Issues
