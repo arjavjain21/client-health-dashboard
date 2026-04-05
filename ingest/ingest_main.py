@@ -25,7 +25,8 @@ from consolidate_leads_by_client import (
     fetch_active_campaigns,
     fetch_all_clients,
     process_all_campaigns,
-    consolidate_by_client
+    consolidate_by_client,
+    main as run_consolidator
 )
 
 # Load environment variables
@@ -47,6 +48,24 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# EXTERNAL ACCOUNTS CONFIGURATION
+# ============================================================================
+
+# External SmartLead accounts configuration
+# Each account has a unique API key and client code mapping
+EXTERNAL_ACCOUNTS = {
+    'HHK': {
+        'api_key': os.environ.get('SMARTLEAD_API_KEY_HHK', 'f3842075-6372-4a8f-96a2-5e7aeeaa4301_0rlw86d'),
+        'client_code': 'HHK'
+    },
+    'STRN': {
+        'api_key': os.environ.get('SMARTLEAD_API_KEY_STRN', 'ba6f6cf7-52a0-45b4-b40a-1e3302b59b56_dg1b1oq'),
+        'client_code': 'STRN'
+    }
+}
 
 
 # ============================================================================
@@ -229,7 +248,7 @@ def normalize_client_name(name: str | None) -> str:
 
 def fetch_not_contacted_leads_from_smartlead():
     """
-    Fetch not contacted lead counts from SmartLead API.
+    Fetch not contacted lead counts from SmartLead API (main account + external accounts).
 
     Returns:
         dict: Maps normalized client_name to not_contacted count
@@ -237,32 +256,74 @@ def fetch_not_contacted_leads_from_smartlead():
     """
     logger.info("Fetching not contacted leads from SmartLead API...")
 
-    try:
-        # Create API session
-        session = create_session()
+    not_contacted_map = {}
 
-        # Fetch campaigns and process
+    try:
+        # =========================================================================
+        # Step 1: Fetch from main account (default API key)
+        # =========================================================================
+        logger.info("Fetching from main account...")
+
+        session = create_session()
         campaigns = fetch_active_campaigns(session)
         if not campaigns:
-            logger.warning("No active campaigns found in SmartLead API")
-            return {}
+            logger.warning("No active campaigns found in main SmartLead API")
+        else:
+            client_map = fetch_all_clients(session)
+            logger.info(f"Processing {len(campaigns)} campaigns for not contacted leads...")
+            campaign_data = process_all_campaigns(campaigns, client_map)
+            client_summaries = consolidate_by_client(campaign_data)
 
-        client_map = fetch_all_clients(session)
-
-        # Process campaigns (this may take 10-15 minutes)
-        logger.info(f"Processing {len(campaigns)} campaigns for not contacted leads...")
-        campaign_data = process_all_campaigns(campaigns, client_map)
-
-        # Consolidate by client
-        client_summaries = consolidate_by_client(campaign_data)
-
-        # Convert to dict: normalized client_name -> not_contacted count
-        not_contacted_map = {}
-        for summary in client_summaries:
-            normalized_name = normalize_client_name(summary.client_name)
-            not_contacted_map[normalized_name] = summary.not_contacted
+            for summary in client_summaries:
+                normalized_name = normalize_client_name(summary.client_name)
+                not_contacted_map[normalized_name] = summary.not_contacted
 
         session.close()
+
+        # =========================================================================
+        # Step 2: Fetch from external accounts (HHK, STRN)
+        # =========================================================================
+        logger.info("Fetching from external accounts...")
+
+        for account_name, config in EXTERNAL_ACCOUNTS.items():
+            api_key = config['api_key']
+            client_code = config['client_code']
+
+            logger.info(f"Processing external account: {account_name}")
+
+            try:
+                session = create_session()
+                campaigns = fetch_active_campaigns(session, api_key=api_key)
+
+                if not campaigns:
+                    logger.warning(f"No active campaigns found for {account_name}")
+                    continue
+
+                client_map = fetch_all_clients(session, api_key=api_key)
+                logger.info(f"Processing {len(campaigns)} campaigns for {account_name}...")
+                campaign_data = process_all_campaigns(
+                    campaigns,
+                    client_map,
+                    api_key=api_key,
+                    account_name=account_name
+                )
+
+                client_summaries = consolidate_by_client(campaign_data)
+
+                # For external accounts, use the account_name as the client identifier
+                # since they don't have proper client mappings in SmartLead
+                for summary in client_summaries:
+                    # Use account_name as the key since that's what we set as client_name
+                    # when there's no proper mapping
+                    normalized_name = normalize_client_name(summary.client_name)
+                    not_contacted_map[normalized_name] = summary.not_contacted
+                    logger.info(f"  {account_name}: {summary.not_contacted} not contacted leads")
+
+                session.close()
+
+            except Exception as e:
+                logger.error(f"Failed to fetch from {account_name}: {e}")
+                continue
 
         logger.info(f"Fetched not contacted data for {len(not_contacted_map)} clients")
         return not_contacted_map

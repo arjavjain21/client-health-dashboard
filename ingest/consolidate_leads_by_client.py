@@ -36,7 +36,7 @@ except ImportError:
 # ============================================================================
 
 # SmartLead API Configuration
-API_KEY = os.environ.get('SMARTLEAD_API_KEY', '2fbf4f7d-44af-4ff1-8e25-5655f5483fd0_94zyakr')
+DEFAULT_API_KEY = os.environ.get('SMARTLEAD_API_KEY', '2fbf4f7d-44af-4ff1-8e25-5655f5483fd0_94zyakr')
 BASE_URL = "https://server.smartlead.ai/api/v1"
 
 # Performance settings
@@ -117,7 +117,8 @@ def make_api_request(
     session: requests.Session,
     endpoint: str,
     params: Optional[Dict] = None,
-    method: str = "GET"
+    method: str = "GET",
+    api_key: Optional[str] = None
 ) -> Optional[Dict]:
     """
     Make an API request with error handling
@@ -127,6 +128,7 @@ def make_api_request(
         endpoint: API endpoint (without base URL)
         params: Query parameters
         method: HTTP method
+        api_key: Optional API key override (defaults to DEFAULT_API_KEY)
 
     Returns:
         Response JSON or None if error
@@ -136,7 +138,8 @@ def make_api_request(
     if params is None:
         params = {}
 
-    params['api_key'] = API_KEY
+    # Use provided api_key or fall back to default
+    params['api_key'] = api_key if api_key else DEFAULT_API_KEY
 
     try:
         response = session.request(
@@ -159,11 +162,11 @@ def make_api_request(
         return None
 
 
-def fetch_active_campaigns(session: requests.Session) -> List[Dict]:
+def fetch_active_campaigns(session: requests.Session, api_key: Optional[str] = None) -> List[Dict]:
     """Fetch all active campaigns"""
     print("Fetching campaigns...")
 
-    campaigns = make_api_request(session, "/campaigns", params={"include_tags": "true"})
+    campaigns = make_api_request(session, "/campaigns", params={"include_tags": "true"}, api_key=api_key)
 
     if campaigns is None:
         print("✗ Failed to fetch campaigns")
@@ -185,11 +188,11 @@ def fetch_active_campaigns(session: requests.Session) -> List[Dict]:
     return active_campaigns
 
 
-def fetch_all_clients(session: requests.Session) -> Dict[int, Dict]:
+def fetch_all_clients(session: requests.Session, api_key: Optional[str] = None) -> Dict[int, Dict]:
     """Fetch all clients and return as a dictionary keyed by client_id"""
     print("Fetching clients...")
 
-    clients = make_api_request(session, "/client/")
+    clients = make_api_request(session, "/client/", api_key=api_key)
 
     if clients is None:
         print("⚠ Failed to fetch clients, will use campaign data only")
@@ -220,7 +223,8 @@ def fetch_all_clients(session: requests.Session) -> Dict[int, Dict]:
 def fetch_campaign_leads_paginated(
     session: requests.Session,
     campaign_id: int,
-    status_filter: Optional[str] = None
+    status_filter: Optional[str] = None,
+    api_key: Optional[str] = None
 ) -> List[Dict]:
     """
     Fetch all leads for a campaign with pagination
@@ -229,6 +233,7 @@ def fetch_campaign_leads_paginated(
         session: Requests session
         campaign_id: Campaign ID
         status_filter: Optional status filter (STARTED, INPROGRESS, etc.)
+        api_key: Optional API key override
 
     Returns:
         List of all leads
@@ -250,7 +255,8 @@ def fetch_campaign_leads_paginated(
         response = make_api_request(
             session,
             f"/campaigns/{campaign_id}/leads",
-            params=params
+            params=params,
+            api_key=api_key
         )
 
         if response is None:
@@ -279,7 +285,8 @@ def fetch_campaign_leads_paginated(
 
 def count_leads_by_status(
     session: requests.Session,
-    campaign_id: int
+    campaign_id: int,
+    api_key: Optional[str] = None
 ) -> LeadCounts:
     """
     Count leads by status for a campaign
@@ -289,12 +296,13 @@ def count_leads_by_status(
     Args:
         session: Requests session
         campaign_id: Campaign ID
+        api_key: Optional API key override
 
     Returns:
         LeadCounts object with all counts
     """
     # Fetch all leads for this campaign
-    all_leads = fetch_campaign_leads_paginated(session, campaign_id)
+    all_leads = fetch_campaign_leads_paginated(session, campaign_id, api_key=api_key)
 
     counts = LeadCounts(total_leads=len(all_leads))
 
@@ -321,7 +329,9 @@ def count_leads_by_status(
 def process_single_campaign(
     session: requests.Session,
     campaign: Dict,
-    client_map: Dict[int, Dict]
+    client_map: Dict[int, Dict],
+    api_key: Optional[str] = None,
+    account_name: Optional[str] = None
 ) -> CampaignData:
     """
     Process a single campaign to get lead counts
@@ -330,6 +340,8 @@ def process_single_campaign(
         session: Requests session
         campaign: Campaign dict
         client_map: Client information map
+        api_key: Optional API key override
+        account_name: Optional account name to use as fallback when client_name is Unknown
 
     Returns:
         CampaignData object
@@ -341,9 +353,13 @@ def process_single_campaign(
     client_info = client_map.get(client_id, {})
     client_name = campaign.get('client_name') or client_info.get('name', 'Unknown')
 
+    # If client_name is Unknown and we have an account_name, use that instead
+    if client_name == 'Unknown' and account_name:
+        client_name = account_name
+
     try:
         # Count leads by status
-        lead_counts = count_leads_by_status(session, campaign_id)
+        lead_counts = count_leads_by_status(session, campaign_id, api_key=api_key)
 
         return CampaignData(
             campaign_id=campaign_id,
@@ -400,7 +416,9 @@ def consolidate_by_client(campaign_data: List[CampaignData]) -> List[ClientSumma
 
 def process_all_campaigns(
     campaigns: List[Dict],
-    client_map: Dict[int, Dict]
+    client_map: Dict[int, Dict],
+    api_key: Optional[str] = None,
+    account_name: Optional[str] = None
 ) -> List[CampaignData]:
     """
     Process all campaigns in parallel to get lead counts
@@ -408,6 +426,8 @@ def process_all_campaigns(
     Args:
         campaigns: List of campaign dicts
         client_map: Client information map
+        api_key: Optional API key override
+        account_name: Optional account name to use as fallback for Unknown clients
 
     Returns:
         List of CampaignData objects
@@ -426,7 +446,9 @@ def process_all_campaigns(
                 process_single_campaign,
                 create_session(),
                 campaign,
-                client_map
+                client_map,
+                api_key,
+                account_name
             ): campaign['id']
             for campaign in campaigns
         }
@@ -517,17 +539,28 @@ def print_results(client_summaries: List[ClientSummary]) -> None:
 # MAIN EXECUTION
 # ============================================================================
 
-def main():
-    """Main execution function"""
+def main(api_key: Optional[str] = None, account_name: Optional[str] = None):
+    """
+    Main execution function
+
+    Args:
+        api_key: Optional API key to use (defaults to DEFAULT_API_KEY)
+        account_name: Optional account name for fallback when client_name is Unknown
+    """
     start_time = time.time()
+
+    # Use provided api_key or fall back to default
+    effective_api_key = api_key if api_key else DEFAULT_API_KEY
 
     print("="*80)
     print("SmartLead Client Consolidator - Starting")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if account_name:
+        print(f"Account: {account_name}")
     print("="*80 + "\n")
 
     # Validate API key
-    if not API_KEY or API_KEY == 'your_api_key_here':
+    if not effective_api_key or effective_api_key == 'your_api_key_here':
         print("✗ SMARTLEAD_API_KEY not configured!")
         print("Set it with: export SMARTLEAD_API_KEY='your_key_here'")
         return 1
@@ -537,16 +570,16 @@ def main():
 
     try:
         # Step 1: Fetch all campaigns
-        all_campaigns = fetch_active_campaigns(session)
+        all_campaigns = fetch_active_campaigns(session, api_key=effective_api_key)
         if not all_campaigns:
             print("✗ No active campaigns found. Exiting.")
             return 0
 
         # Step 2: Fetch all clients
-        client_map = fetch_all_clients(session)
+        client_map = fetch_all_clients(session, api_key=effective_api_key)
 
         # Step 3: Process all active campaigns in parallel
-        campaign_data = process_all_campaigns(all_campaigns, client_map)
+        campaign_data = process_all_campaigns(all_campaigns, client_map, api_key=effective_api_key, account_name=account_name)
 
         # Step 4: Consolidate by client
         client_summaries = consolidate_by_client(campaign_data)
